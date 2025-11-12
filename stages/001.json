@@ -1,9 +1,19 @@
 {
   "name": "Intro-6",
   "radius": 6,
-  "mines":   [[0,-2],[1,-2],[2,-2],[-1,0],[2,0],[-2,2],[0,3]],
+  "mines": [[0,-2],[1,-2],[2,-2],[-1,0],[2,0],[-2,2],[0,3]],
   "blocked": [[-5,0],[-4,1],[4,-1]],
 
-  "start_revealed": [[0,0],[0,1],[-1,1]],
-  "start_flagged":  [[0,-2],[2,0]]
+  "edge_hint_normal": [
+    { "pos": [-6, 0], "dir": 0, "label_dir": 3, "label_angle": 90 }
+  ],
+
+  "edge_hint_tight": [
+    { "pos": [ 6,-6], "dir": 4, "label_dir": 1, "label_angle": 0 },
+    { "pos": [-6, 6], "dir": 1, "label_dir": 4, "label_angle": 0 }
+  ],
+
+  "edge_hint_loose": [
+    { "pos": [ 0,-6], "dir": 5, "label_dir": 2, "label_angle": 0 }
+  ]
 }

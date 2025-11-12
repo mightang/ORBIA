@@ -1,3 +1,6 @@
+from .grid import DIRECTIONS
+from collections import deque
+
 C_COVERED  = 0
 C_REVEALED = 1
 C_FLAGGED  = 2
@@ -20,7 +23,8 @@ class Board:
         self.first_click_done = False
         self.is_game_over = False
         self.is_win = False
-        self.mistakes = 0  # ← 실수 횟수
+        self.mistakes = 0
+        self.locked_flags = set()
 
         # 차단/지뢰 배치
         for q, r in stage_data.get("blocked", []):
@@ -30,8 +34,10 @@ class Board:
             if (q, r) in self.tiles and self.tiles[(q, r)].state != C_BLOCKED:
                 self.tiles[(q, r)].is_mine = True
 
-        self._recompute_numbers()
+        # 숫자 계산
+        self.recompute_numbers()
 
+        # 시작 상태 반영(reveal/flag)
         for q, r in stage_data.get("start_revealed", []):
             if (q, r) in self.tiles:
                 t = self.tiles[(q, r)]
@@ -43,15 +49,76 @@ class Board:
                 t = self.tiles[(q, r)]
                 if t.state != C_BLOCKED:
                     t.state = C_FLAGGED
+                    if t.is_mine:
+                        self.locked_flags.add((q, r))   # ← 시작부터 잠금
 
-        self._recompute_counters()
-        self._check_win_and_update()
+        # 셀 숫자 힌트 맵
+        self.number_hint = {}
+        def apply(lst, tag):
+            for q, r in stage_data.get(lst, []):
+                if (q, r) in self.tiles:
+                    t = self.tiles[(q, r)]
+                    if (t.state != C_BLOCKED) and (not t.is_mine):
+                        self.number_hint[(q, r)] = tag
+        apply("hint_tight", "tight")
+        apply("hint_loose", "loose")
+        apply("hint_unknown", "unknown")
+        apply("hint_tight",   "tight")
+        apply("hint_loose",   "loose")
+        apply("hint_unknown", "unknown")
 
-    def _neighbors(self, q, r):
+        self.build_edge_hints(stage_data)
+        self.recompute_counters()
+        self.check_win_and_update()
+        self.special = stage_data.get("special", {})
+
+    def line_cells(self, q, r, dir_idx):
+        """pos=(q,r)에서 dir 방향으로 필드 안쪽 끝까지 좌표를 나열."""
+        dq, dr = DIRECTIONS[dir_idx]
+        path = []
+        cq, cr = q, r
+        if (cq, cr) not in self.tiles:  # 테두리 바깥서 시작하면 먼저 한 칸 안쪽으로
+            cq += dq; cr += dr
+        while (cq, cr) in self.tiles:
+            path.append((cq, cr))
+            cq += dq; cr += dr
+        return path
+
+    def contiguous(self, idx_list):
+        """지뢰 인덱스가 연속인지(모두 붙어 있는지)."""
+        if not idx_list:
+            return True
+        return (max(idx_list) - min(idx_list) + 1) == len(idx_list)
+    
+    def build_edge_hints(self, st):
+        self.edge_hints = []
+        def add_entries(key, style):
+            for ent in st.get(key, []):
+                pos = tuple(ent["pos"]); d = int(ent["dir"])
+                path = self.line_cells(pos[0], pos[1], d)
+                path_play = [(q,r) for (q,r) in path if self.tiles[(q,r)].state != C_BLOCKED]
+                idx_list = [i for i,(q,r) in enumerate(path_play) if self.tiles[(q,r)].is_mine]
+                self.edge_hints.append({
+                    "pos": pos,
+                    "dir": d,
+                    "count": len(idx_list),
+                    "style": style,
+                    # ▼ 새로 전달할 선택 필드들
+                    "label_pos": tuple(ent["label_pos"]) if "label_pos" in ent else None,
+                    "label_dir": int(ent["label_dir"]) if "label_dir" in ent else None,
+                    "label_dist": float(ent["label_dist"]) if "label_dist" in ent else None,
+                    "label_angle": float(ent["label_angle"]) if "label_angle" in ent else None,
+                })
+        add_entries("edge_hint_normal", "normal")
+        add_entries("edge_hint_tight",  "tight")
+        add_entries("edge_hint_loose",  "loose")
+
+
+    def neighbors(self, q, r):
         for nq, nr in self.grid.neighbors(q, r):
             yield (nq, nr)
 
-    def _recompute_numbers(self):
+    def recompute_numbers(self):
         for (q, r), t in self.tiles.items():
             if t.state == C_BLOCKED:
                 t.number = 0
@@ -60,16 +127,16 @@ class Board:
                 t.number = -1
                 continue
             cnt = 0
-            for (nq, nr) in self._neighbors(q, r):
+            for (nq, nr) in self.neighbors(q, r):
                 if self.tiles[(nq, nr)].is_mine:
                     cnt += 1
             t.number = cnt
 
-    def _recompute_counters(self):
+    def recompute_counters(self):
         self.total_cells = sum(1 for t in self.tiles.values() if t.state != C_BLOCKED)
         self.total_mines = sum(1 for t in self.tiles.values() if t.is_mine and t.state != C_BLOCKED)
         self.flag_count  = sum(1 for t in self.tiles.values() if t.state == C_FLAGGED)
-        self.revealed_count = sum(1 for t in self.tiles.values() if t.state == C_REVEALED and not t.is_mine and t.state != C_BLOCKED)
+        self.revealed_count = sum(1 for t in self.tiles.values() if t.state == C_REVEALED and not t.is_mine)
         self.mines_left = max(0, self.total_mines - self.flag_count)
 
     def toggle_flag(self, q, r):
@@ -78,60 +145,115 @@ class Board:
         t = self.tiles.get((q, r))
         if not t or t.state in (C_REVEALED, C_BLOCKED):
             return
-
-        if t.state == C_COVERED:
-            # 커버드 → 플래그 로 전환할 때만 실수 판정
-            if not t.is_mine:
-                self.mistakes += 1   # 안전칸에 깃발 = 실수 +1
-            t.state = C_FLAGGED
-        elif t.state == C_FLAGGED:
-            # 플래그 해제는 실수로 치지 않음
-            t.state = C_COVERED
-
-        self._recompute_counters()
-
-    def reveal(self, q, r):
-        """좌클릭 오픈: 지뢰여도 게임오버 없이 그 칸만 공개 + mistakes++"""
-        if self.is_game_over: return None
-        if (q, r) not in self.tiles: return None
-        t = self.tiles[(q, r)]
-        if t.state in (C_FLAGGED, C_BLOCKED, C_REVEALED): return None
-
-        if t.is_mine:
-            # 게임오버 금지: 이 칸만 드러내고 실수 +1
-            self.mistakes += 1
-            self._recompute_counters()
-            self._check_win_and_update()
-            return "mine"
         
-        t.state = C_REVEALED
-        # (0이면 연쇄 오픈 로직이 있다면 이어서 호출)
-        self._recompute_counters()
-        self._check_win_and_update()
-        return "ok"
+        pos = (q, r)
 
-        self._recompute_counters()
-        # 승리 판정(선택): 모든 비지뢰 공개 시 승리 유지
-        all_safe = all(
-            (tt.state == C_REVEALED) if (not tt.is_mine and tt.state != C_BLOCKED) else True
-            for tt in self.tiles.values()
-        )
-        if all_safe:
-            self.is_game_over = True
-            self.is_win = True
-        return "ok"
+        if t.state == C_FLAGGED:
+            # 잠금(=지뢰 깃발)인 경우 해제 불가
+            if pos in self.locked_flags:
+                return
+            # 잠금이 아니면(안전칸에 있었던 시작 깃발 등) 해제 허용
+            t.state = C_COVERED
+            self.recompute_counters()
+            self.check_win_and_update()
+            return
+
+        # 여기 오면 C_COVERED
+        if t.is_mine:
+            # 지뢰면 깃발 + 잠금
+            t.state = C_FLAGGED
+            self.locked_flags.add(pos)
+        else:
+            # 안전칸이면 깃발 금지: 실수 +1만, 상태는 그대로
+            self.mistakes += 1
+
+        self.recompute_counters()
+        self.check_win_and_update()
+
+    # 기존 reveal 로직을 아래처럼 다듬어 주세요 (핵심: 0에서 연쇄 공개)
+    def reveal(self, q, r):
+        if self.is_game_over:
+            return
+
+        t = self.tiles.get((q, r))
+        if not t:
+            return
+        if t.state == C_BLOCKED:
+            return
+        if t.state == C_REVEALED:
+            return
+        # 보수적으로: 깃발이 씌워진 칸은 무시(해제는 우클릭 규칙으로)
+        if t.state == C_FLAGGED:
+            return
+
+        # 지뢰 규칙: 열지 않고 실수만 +1
+        if t.is_mine:
+            self.mistakes += 1
+            self.check_win_and_update()
+            return
+
+        # 안전칸 공개
+        t.state = C_REVEALED
+        self.revealed_count += 1
+
+        # 숫자 0이면 연쇄 공개
+        if t.number == 0:
+            self.flood_fill_open((q, r))
+
+        # 승리 조건 갱신
+        self.check_win_and_update()
+
+
+    def flood_fill_open(self, start_pos):
+        if start_pos not in self.tiles:
+            return
+        start = self.tiles[start_pos]
+        if start.is_mine or start.state == C_BLOCKED:
+            return
+        # 시작점이 0이 아니면 연쇄 공개 불필요
+        if start.number != 0:
+            return
+
+        q = deque([start_pos])
+        seen = {start_pos}
+
+        while q:
+            cq, cr = q.popleft()
+            for nb in self.grid.neighbors(cq, cr):
+                t = self.tiles.get(nb)
+                if not t:
+                    continue
+                # 연쇄 공개 중에도 다음 규칙을 지킵니다
+                if t.state == C_BLOCKED:
+                    continue
+                if t.state == C_FLAGGED:
+                    continue
+                if t.is_mine:
+                    continue
+
+                # 새로 여는 경우에만 카운트
+                if t.state != C_REVEALED:
+                    t.state = C_REVEALED
+                    # 안전칸만 카운팅
+                    self.revealed_count += 1
+
+                # 0이면 큐에 추가(더 확장)
+                if t.number == 0 and nb not in seen:
+                    seen.add(nb)
+                    q.append(nb)
 
     def reset_reveals_and_flags(self):
         self.first_click_done = False
         self.is_game_over = False
         self.is_win = False
         self.mistakes = 0
+        self.locked_flags.clear()
         for t in self.tiles.values():
             if t.state != C_BLOCKED:
                 t.state = C_COVERED
-        self._recompute_counters()
+        self.recompute_counters()
 
-    def _all_safe_revealed(self) -> bool:
+    def all_safe_revealed(self) -> bool:
         for t in self.tiles.values():
             if t.state == C_BLOCKED:
                 continue
@@ -139,7 +261,7 @@ class Board:
                 return False
         return True
 
-    def _all_mines_flagged(self) -> bool:
+    def all_mines_flagged(self) -> bool:
         for t in self.tiles.values():
             if t.state == C_BLOCKED:
                 continue
@@ -147,7 +269,7 @@ class Board:
                 return False
         return True
 
-    def _check_win_and_update(self):
-        if self._all_safe_revealed() and self._all_mines_flagged():
+    def check_win_and_update(self):
+        if self.all_safe_revealed() and self.all_mines_flagged():
             self.is_game_over = True
             self.is_win = True
