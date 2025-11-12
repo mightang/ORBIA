@@ -1,0 +1,27 @@
+WIDTH, HEIGHT = 960, 720
+FPS = 60
+
+HEX_SIZE = 28
+BOARD_CENTER = (WIDTH//2, HEIGHT//2)
+
+FONT_PATH = "assets/fonts/PretendardVariable.ttf"
+FONT_SIZE = 24
+
+COL_BG = (18, 20, 24)
+COL_GRID = (55, 60, 70)
+COL_COVERED = (245, 184, 60)
+COL_BLOCKED = (24, 26, 30)
+COL_REVEAL = (48, 52, 58)
+COL_MINE = (220, 70, 70)
+COL_FLAG_TILE = (72, 128, 240)
+COL_TEXT = (255, 255, 255)
+
+COL_BTN_BG      = (60, 70, 90)
+COL_BTN_BORDER  = (55, 60, 70)
+COL_BTN_TEXT    = (255, 255, 255)
+COL_BTN_RETRY   = (72, 128, 240)
+COL_BTN_MENU    = (120, 120, 130)
+COL_BTN_NEXT    = (90, 180, 110)
+
+EDGE_HINT_OFFSET = 1.25   # 기존 1.05쯤이었다면 살짝 멀게
+EDGE_HINT_ROTATE = True   # 텍스트 방향 회전 여부
