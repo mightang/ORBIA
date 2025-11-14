@@ -4,10 +4,10 @@
 
 | 항목 | 내용 |
 |------|------|
-| 프로젝트명 | HEXFIELD: Galactic Restoration |
+| 프로젝트명 | 미정 |
 | 장르 | 퍼즐 / 논리 / 전략 |
 | 개발 환경 | Python 3.11, pygame |
-| 타겟 플랫폼 | PC (Windows / macOS) |
+| 타겟 플랫폼 | PC (Windows) |
 | 주요 특징 | 육각형 타일 기반 지뢰찾기, 은하 탐사형 스테이지 구조, 점진적 난이도 상승, 파스텔톤 SF UI |
 
 
