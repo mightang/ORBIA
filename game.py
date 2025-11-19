@@ -2,9 +2,12 @@ import os
 import pygame, sys, json, re
 from core.grid import HexGrid
 from core.board import Board
-from core.render import draw_board, draw_edge_hints, draw_topright_info, draw_success_modal
+from core.render import (
+    draw_board, draw_edge_hints, draw_topright_info, draw_success_modal,
+    edge_hint_hit_test,
+)
 from core.hexmath import pixel_to_axial
-from settings import WIDTH, HEIGHT, HEX_SIZE, BOARD_CENTER, COL_BG
+from settings import WIDTH, HEIGHT, BOARD_CENTER, COL_BG
 
 def load_font():
     # 1순위: 동봉 폰트
@@ -29,6 +32,31 @@ def load_font():
     # 3순위: 최후의 폴백(한글 미보장)
     return pygame.font.SysFont(None, 22)
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+TOTAL_STAGES = 37
+
+def stage_index_to_relpath(idx: int) -> str:
+    num = int(idx)
+    if num < 1 or num > TOTAL_STAGES:
+        raise ValueError(f"invalid stage index: {idx}")
+
+    if num == 1:
+        subdir = "tutorial"
+    elif 2 <= num <= 7:
+        subdir = "basic"
+    elif 8 <= num <= 19:
+        subdir = "intermediate"
+    else:
+        subdir = "advance"
+
+    return os.path.join("stages", subdir, f"{num:03d}.json")
+
+
+def path_to_stage_index(path: str):
+    m = re.search(r"(\d+)\.json$", path)
+    return int(m.group(1)) if m else None
+
+
 def load_stage(path):
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
@@ -40,28 +68,31 @@ def stage_label_from(st, path):
     return f"Stage {m.group(1)}" if m else path
 
 def next_stage_path(path):
-    m = re.search(r"(.*?)(\d+)(\.json)$", path)
-    if not m:
+    cur = path_to_stage_index(path)
+    if cur is None or cur >= TOTAL_STAGES:
         return path
-    prefix, num, suffix = m.groups()
-    nxt = str(int(num) + 1).zfill(len(num))
-    return f"{prefix}{nxt}{suffix}"
+    nxt = cur + 1
+    return os.path.join(BASE_DIR, stage_index_to_relpath(nxt))
 
 def reload_board(stage_path):
     st = load_stage(stage_path)
     grid = HexGrid.from_stage(st)
     return Board(grid, st), st
 
-def main(stage_path="stages/001.json"):
+def main(stage_path=None):
     pygame.init()
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
     clock = pygame.time.Clock()
     font = load_font()
 
-    board, st = reload_board(stage_path)
+    board, st, hex_size= reload_board(stage_path)
     modal_active = False
     modal_btn_rects = {}
     stage_label = stage_label_from(st, stage_path)
+
+    if stage_path is None:
+        # 디폴트: 001 튜토리얼
+        stage_path = os.path.join(BASE_DIR, stage_index_to_relpath(1))
 
     running = True
     while running:
@@ -100,10 +131,23 @@ def main(stage_path="stages/001.json"):
                                 pass
                     continue  # 모달 중에는 아래 보드 입력 막음
 
+                # (새로 추가) 테두리 숫자 클릭 처리
+                idx = edge_hint_hit_test(board, BOARD_CENTER, hex_size, font, event.pos)
+                if idx is not None:
+                    ent = board.edge_hints[idx]
+                    if event.button == 1:
+                        # 좌클릭: 보조선 토글
+                        ent["helper_on"] = not ent.get("helper_on", False)
+                    elif event.button == 3:
+                        # 우클릭: 숫자 흐리게 토글 + 보조선 끄기
+                        ent["dimmed"] = not ent.get("dimmed", False)
+                        ent["helper_on"] = False
+                    continue  # 숫자 클릭 시 보드 입력 막음
+
                 # 평소 입력
                 mx, my = pygame.mouse.get_pos()
                 lx, ly = mx - BOARD_CENTER[0], my - BOARD_CENTER[1]
-                q, r = pixel_to_axial(lx, ly, HEX_SIZE)
+                q, r = pixel_to_axial(lx, ly, hex_size)
                 if (q, r) in board.tiles:
                     if event.button == 1:
                         board.reveal(q, r)
@@ -111,8 +155,8 @@ def main(stage_path="stages/001.json"):
                         board.toggle_flag(q, r)
 
         screen.fill(COL_BG)
-        draw_board(screen, board, BOARD_CENTER, HEX_SIZE, font)
-        draw_edge_hints(screen, board, BOARD_CENTER, HEX_SIZE, font)
+        draw_board(screen, board, BOARD_CENTER, hex_size, font)
+        draw_edge_hints(screen, board, BOARD_CENTER, hex_size, font)
         draw_topright_info(screen, board, font)
 
         # 모달 그리기

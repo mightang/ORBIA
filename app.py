@@ -19,7 +19,7 @@ class App:
 
     def load_font(self, size):
         # assets 폴더에 폰트 파일이 있다면 여기서 불러오기
-        font_path = os.path.join(self.ASSET_DIR, "fonts", "Pretendard-Regular.ttf")
+        font_path = os.path.join(self.ASSET_DIR, "fonts", "PretendardVariable.ttf")
         if os.path.exists(font_path):
             return pygame.font.Font(font_path, size)
         else:

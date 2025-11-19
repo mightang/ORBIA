@@ -170,7 +170,6 @@ class Board:
         self.recompute_counters()
         self.check_win_and_update()
 
-    # 기존 reveal 로직을 아래처럼 다듬어 주세요 (핵심: 0에서 연쇄 공개)
     def reveal(self, q, r):
         if self.is_game_over:
             return
@@ -182,7 +181,6 @@ class Board:
             return
         if t.state == C_REVEALED:
             return
-        # 보수적으로: 깃발이 씌워진 칸은 무시(해제는 우클릭 규칙으로)
         if t.state == C_FLAGGED:
             return
 
