@@ -1,7 +1,7 @@
 # core/scenes.py
 import os, json, re
 import pygame
-from core.ui import Button, draw_label_center
+from core.ui import Button, draw_label_center, Slider
 from core import render as render_mod
 from core.board import Board
 from core.grid import HexGrid
@@ -11,10 +11,6 @@ from settings import BOARD_CENTER, HEX_SIZE, WIDTH, HEIGHT
 TOTAL_STAGES = 37
 
 def stage_index_to_relpath(idx: int) -> str:
-    """
-    1~37 스테이지 번호를 받아서
-    stages/tutorial/001.json 같은 상대 경로를 돌려준다.
-    """
     num = int(idx)
     if num < 1 or num > TOTAL_STAGES:
         raise ValueError(f"invalid stage index: {idx}")
@@ -53,24 +49,338 @@ class TitleScene(Scene):
         W, H = self.game.WIDTH, self.game.HEIGHT
         self.title_font = self.game.load_font(48)
         self.ui_font = self.game.load_font(26)
+
         btn_w, btn_h = 240, 56
+        center_x = (W - btn_w) // 2
+        base_y = int(H * 0.45)
+        gap = 12
+
         self.start_btn = Button(
-            rect=( (W-btn_w)//2, int(H*0.55), btn_w, btn_h ),
+            rect=(center_x, base_y, btn_w, btn_h),
             text="시작하기",
             font=self.ui_font,
-            on_click=self._go_level_select
+            on_click=self.go_level_select
+        )
+        self.option_btn = Button(
+            rect=(center_x, base_y + (btn_h + gap), btn_w, btn_h),
+            text="옵션",
+            font=self.ui_font,
+            on_click=self.go_options
+        )
+        self.credit_btn = Button(
+            rect=(center_x, base_y + 2 * (btn_h + gap), btn_w, btn_h),
+            text="크레딧",
+            font=self.ui_font,
+            on_click=self.go_credits
+        )
+        self.quit_btn = Button(
+            rect=(center_x, base_y + 3 * (btn_h + gap), btn_w, btn_h),
+            text="게임 종료",
+            font=self.ui_font,
+            on_click=self.quit_game
         )
 
-    def _go_level_select(self):
+    def go_level_select(self):
         self.game.change_scene(LevelSelectScene(self.game))
+
+    def go_options(self):
+        self.game.change_scene(OptionsScene(self.game))
+
+    def go_credits(self):
+        self.game.change_scene(CreditsScene(self.game))
+
+    def quit_game(self):
+        self.game.quit()
 
     def handle_event(self, e):
         self.start_btn.handle_event(e)
+        self.option_btn.handle_event(e)
+        self.credit_btn.handle_event(e)
+        self.quit_btn.handle_event(e)
 
     def draw(self, screen):
         screen.fill((14,18,32))
-        draw_label_center(screen, "GAME TITLE", self.title_font, (self.game.WIDTH//2, int(self.game.HEIGHT*0.35)))
+        draw_label_center(
+            screen, "GAME TITLE",
+            self.title_font,
+            (self.game.WIDTH//2, int(self.game.HEIGHT*0.28))
+        )
         self.start_btn.draw(screen)
+        self.option_btn.draw(screen)
+        self.credit_btn.draw(screen)
+        self.quit_btn.draw(screen)
+
+class OptionsScene(Scene):
+    def __init__(self, game):
+        super().__init__(game)
+        W, H = self.game.WIDTH, self.game.HEIGHT
+        self.title_font = self.game.load_font(40)
+        self.ui_font = self.game.load_font(22)
+        self.small_font = self.game.load_font(18)
+
+        # 슬라이더 영역 설정
+        margin_x = 120
+        slider_w = W - margin_x * 2
+        y_base = int(H * 0.3)
+        gap_y = 80
+
+        # BGM 슬라이더
+        self.bgm_slider = Slider(
+            rect=(margin_x, y_base, slider_w, 24),
+            min_val=0.0, max_val=1.0,
+            value=self.game.bgm_volume,
+            on_change=self.on_bgm_change
+        )
+
+        # SFX 슬라이더
+        self.sfx_slider = Slider(
+            rect=(margin_x, y_base + gap_y, slider_w, 24),
+            min_val=0.0, max_val=1.0,
+            value=self.game.sfx_volume,
+            on_change=self.on_sfx_change
+        )
+
+        # 해상도 버튼들
+        self.res_buttons = []
+        res_y = y_base + gap_y * 2
+        btn_w, btn_h = 150, 40
+        gap = 20
+        count = len(self.game.resolutions)
+        total_w = count * btn_w + (count-1) * gap
+        start_x = (W - total_w) // 2
+
+        for i, (rw, rh) in enumerate(self.game.resolutions):
+            x = start_x + i * (btn_w + gap)
+            label = f"{rw}x{rh}"
+            def make_cb(idx=i):
+                def cb():
+                    self.select_resolution(idx)
+                return cb
+            self.res_buttons.append(
+                Button((x, res_y, btn_w, btn_h), label, self.small_font, make_cb())
+            )
+
+        # 뒤로가기 버튼
+        self.back_btn = Button(
+            rect=(20, 20, 100, 40),
+            text="뒤로가기",
+            font=self.small_font,
+            on_click=self.back_to_title
+        )
+
+        # 진행도 초기화 관련 상태
+        self.reset_modal_active = False
+        self.reset_modal_btns = {}
+
+        # 오른쪽 아래 데이터 초기화 버튼
+        btn_w, btn_h = 140, 40
+        self.reset_btn = Button(
+            rect = (W - btn_w - 20, H - btn_h - 20, btn_w, btn_h),
+            text = "데이터 초기화",
+            font = self.small_font,
+            on_click = self.open_reset_modal
+        )
+
+    def open_reset_modal(self):
+        self.reset_modal_active = True
+        self.reset_modal_btns = {}
+
+    def confirm_reset(self):
+        # App에 있는 reset_progress 호출
+        if hasattr(self.game, "reset_progress"):
+            self.game.reset_progress()
+        self.reset_modal_active = False
+        self.reset_modal_btns = {}
+
+    def cancel_reset(self):
+        self.reset_modal_active = False
+        self.reset_modal_btns = {}
+
+    def on_bgm_change(self, value):
+        self.game.bgm_volume = float(value)
+        # 나중에 pygame.mixer.music.set_volume(value) 등으로 연결 가능
+
+    def on_sfx_change(self, value):
+        self.game.sfx_volume = float(value)
+        # 효과음 재생 시 이 값을 곱해서 사용할 수 있음
+
+    def select_resolution(self, idx):
+        # 해상도 변경 후, 옵션 씬을 새로 만들어 레이아웃 재계산
+        self.game.set_resolution(idx)
+        self.game.change_scene(OptionsScene(self.game))
+
+    def back_to_title(self):
+        # 타이틀을 새로 생성하면 버튼 위치도 새 해상도 기준으로 재배치됨
+        self.game.change_scene(TitleScene(self.game))
+
+    def handle_event(self, e):
+        # 🔹 초기화 확인 모달이 떠 있을 때는 그쪽만 처리
+        if self.reset_modal_active:
+            if e.type == pygame.KEYDOWN and e.key == pygame.K_ESCAPE:
+                self._cancel_reset()
+                return
+
+            if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1 and self.reset_modal_btns:
+                mx, my = e.pos
+                if self.reset_modal_btns["ok"].collidepoint(mx, my):
+                    self.confirm_reset()
+                elif self.reset_modal_btns["cancel"].collidepoint(mx, my):
+                    self.cancel_reset()
+            return
+        
+        if e.type == pygame.KEYDOWN and e.key == pygame.K_ESCAPE:
+            self.back_to_title()
+            return
+
+        self.back_btn.handle_event(e)
+        self.bgm_slider.handle_event(e)
+        self.sfx_slider.handle_event(e)
+        for b in self.res_buttons:
+            b.handle_event(e)
+        self.reset_btn.handle_event(e)
+
+    def draw_reset_modal(self, screen):
+        w, h = screen.get_size()
+
+        # 어두운 오버레이
+        overlay = pygame.Surface((w, h), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 150))
+        screen.blit(overlay, (0, 0))
+
+        panel_w, panel_h = 520, 220
+        panel_rect = pygame.Rect(0, 0, panel_w, panel_h)
+        panel_rect.center = (w // 2, h // 2)
+
+        pygame.draw.rect(screen, (40, 46, 60), panel_rect, border_radius=16)
+        pygame.draw.rect(screen, (100, 110, 140), panel_rect, width=2, border_radius=16)
+
+        y = panel_rect.top + 30
+        title = self.ui_font.render("게임 데이터를 초기화할까요?", True, (234, 242, 255))
+        screen.blit(title, (panel_rect.left + 24, y))
+        y += title.get_height() + 12
+
+        msg = self.small_font.render("모든 데이터가 삭제되고 게임이 초기화됩니다.", True, (200, 210, 230))
+        screen.blit(msg, (panel_rect.left + 24, y))
+
+        btn_w, btn_h = 120, 40
+        gap = 20
+        total_w = btn_w * 2 + gap
+        start_x = panel_rect.centerx - total_w // 2
+        btn_y = panel_rect.bottom - 24 - btn_h
+
+        ok_rect = pygame.Rect(start_x, btn_y, btn_w, btn_h)
+        cancel_rect = pygame.Rect(start_x + btn_w + gap, btn_y, btn_w, btn_h)
+
+        # 확인 버튼 (빨간 느낌)
+        pygame.draw.rect(screen, (160, 60, 60), ok_rect, border_radius=10)
+        ok_txt = self.small_font.render("예, 초기화", True, (255, 255, 255))
+        screen.blit(ok_txt, ok_txt.get_rect(center=ok_rect.center))
+
+        # 취소 버튼 (회색)
+        pygame.draw.rect(screen, (90, 96, 120), cancel_rect, border_radius=10)
+        cancel_txt = self.small_font.render("취소", True, (255, 255, 255))
+        screen.blit(cancel_txt, cancel_txt.get_rect(center=cancel_rect.center))
+
+        return {"ok": ok_rect, "cancel": cancel_rect}
+
+    def update(self, dt):
+        pass
+
+    def draw(self, screen):
+        screen.fill((10, 14, 24))
+        W, H = self.game.WIDTH, self.game.HEIGHT
+
+        # 제목
+        draw_label_center(screen, "옵션", self.title_font, (W//2, int(H*0.16)))
+
+        # 라벨 텍스트
+        bgm_label = self.ui_font.render("배경 음악 볼륨", True, (234,242,255))
+        sfx_label = self.ui_font.render("효과음 볼륨", True, (234,242,255))
+        res_label = self.ui_font.render("화면 크기 (해상도)", True, (234,242,255))
+
+        screen.blit(bgm_label, (self.bgm_slider.rect.left,
+                                self.bgm_slider.rect.top - 32))
+        screen.blit(sfx_label, (self.sfx_slider.rect.left,
+                                self.sfx_slider.rect.top - 32))
+
+        res_y = self.sfx_slider.rect.top + 80
+        screen.blit(res_label, (self.bgm_slider.rect.left, res_y - 36))
+
+        # 슬라이더/버튼 그리기
+        self.bgm_slider.draw(screen)
+        self.sfx_slider.draw(screen)
+        for i, b in enumerate(self.res_buttons):
+            # 선택된 해상도는 살짝 밝게
+            if i == self.game.res_index:
+                b.bg = (80, 96, 130)
+            else:
+                b.bg = (40, 46, 60)
+            b.draw(screen)
+
+        self.back_btn.draw(screen)
+        self.reset_btn.draw(screen)
+        if self.reset_modal_active:
+            self.reset_modal_btns = self.draw_reset_modal(screen)   
+
+class CreditsScene(Scene):
+    def __init__(self, game):
+        super().__init__(game)
+        self.title_font = self.game.load_font(40)
+        self.ui_font = self.game.load_font(22)
+        self.small_font = self.game.load_font(18)
+
+        # 뒤로가기 버튼
+        self.back_btn = Button(
+            rect=(20, 20, 100, 40),
+            text="뒤로가기",
+            font=self.small_font,
+            on_click=self._back_to_title
+        )
+
+        # 임시 크레딧 텍스트
+        self.lines = [
+            "HEXFIELD (임시 타이틀)",
+            "",
+            "기획 / 구현 : 김태영",
+            "도움 : ChatGPT",
+            "",
+            "감사합니다!"
+        ]
+
+    def _back_to_title(self):
+        self.game.change_scene(TitleScene(self.game))
+
+    def handle_event(self, e):
+        if e.type == pygame.KEYDOWN and e.key == pygame.K_ESCAPE:
+            self._back_to_title()
+            return
+        self.back_btn.handle_event(e)
+
+    def update(self, dt):
+        pass
+
+    def draw(self, screen):
+        screen.fill((12, 16, 26))
+        W, H = self.game.WIDTH, self.game.HEIGHT
+
+        draw_label_center(screen, "크레딧", self.title_font, (W//2, int(H*0.18)))
+
+        # 여러 줄 텍스트 중앙 정렬
+        total_h = 0
+        rendered = []
+        for s in self.lines:
+            img = self.ui_font.render(s, True, (234,242,255))
+            rendered.append(img)
+            total_h += img.get_height() + 4
+
+        y = int(H*0.35) - total_h//2
+        for img in rendered:
+            rect = img.get_rect(center=(W//2, y))
+            screen.blit(img, rect)
+            y += img.get_height() + 4
+
+        self.back_btn.draw(screen)
+
 
 # 2) 레벨 선택 (1~37)
 class LevelSelectScene(Scene):
@@ -79,7 +389,8 @@ class LevelSelectScene(Scene):
         self.total = total
         self.title_font = self.game.load_font(36)
         self.ui_font = self.game.load_font(20)
-        self.buttons = self._build_buttons()
+        self.max_unlocked = getattr(self.game, "max_unlocked_stage", 1)
+        self.buttons = self.build_buttons()
 
         # 뒤로가기 버튼
         btn_w, btn_h = 100, 40
@@ -91,9 +402,9 @@ class LevelSelectScene(Scene):
             on_click=self.go_title
         )
 
-    def _build_buttons(self):
+    def build_buttons(self):
         W, H = self.game.WIDTH, self.game.HEIGHT
-        cols = 10                # 1~37을 보기 좋게 그리드 배치
+        cols = 10
         gap = 12
         btn_w, btn_h = 64, 40
         grid_w = cols*btn_w + (cols-1)*gap
@@ -107,14 +418,21 @@ class LevelSelectScene(Scene):
             x = start_x + col*(btn_w+gap)
             y = start_y + row*(btn_h+gap)
             label = f"{i:02d}"
+
+            locked = (i > self.max_unlocked)
+
             def make_cb(idx=i):
                 def _cb():
-                    self._start_level(idx)
+                    self.start_level(idx)
                 return _cb
-            btns.append(Button((x, y, btn_w, btn_h), label, self.ui_font, make_cb()))
+            on_click = None if locked else make_cb()
+
+            b = Button((x, y, btn_w, btn_h), label, self.ui_font, on_click)
+            b.locked = locked
+            btns.append(b)
         return btns
 
-    def _start_level(self, idx):
+    def start_level(self, idx):
         # 번호 → 폴더 포함 상대 경로로 변환
         rel = stage_index_to_relpath(idx)  # "stages/basic/003.json" 같은 문자열
         path = os.path.join(self.game.BASE_DIR, rel)
@@ -135,8 +453,16 @@ class LevelSelectScene(Scene):
 
     def draw(self, screen):
         screen.fill((18,22,36))
-        draw_label_center(screen, "레벨 선택", self.title_font, (self.game.WIDTH//2, int(self.game.HEIGHT*0.14)))
+        draw_label_center(screen, "레벨 선택", self.title_font,
+                          (self.game.WIDTH//2, int(self.game.HEIGHT*0.14)))
         for b in self.buttons:
+            if getattr(b, "locked", False):
+                # 잠긴 스테이지: 어둡게 + 텍스트 흐리게
+                b.bg = (30, 30, 40)
+                b.fg = (120, 120, 140)
+            else:
+                b.bg = (40, 46, 60)
+                b.fg = (234, 242, 255)
             b.draw(screen)
         self.back_btn.draw(screen)
 
@@ -147,8 +473,8 @@ class GameplayScene(Scene):
         self.stage_path = stage_path
         self.font = self.game.load_font(20)
 
-        self.board, self.stage, self.hex_size = self._reload_board(stage_path)
-        self.stage_label = self._stage_label_from(self.stage, stage_path)
+        self.board, self.stage, self.hex_size = self.reload_board(stage_path)
+        self.stage_label = self.stage_label_from(self.stage, stage_path)
 
         # 클리어 모달
         self.modal_active = False
@@ -163,17 +489,17 @@ class GameplayScene(Scene):
             rect=(pad, pad, btn_w, btn_h),
             text="메뉴",
             font=self.game.load_font(18),
-            on_click=self._open_pause_modal
+            on_click=self.open_pause_modal
         )
 
         
     # ----- 유틸 -----
-    def _load_stage(self, path):
+    def load_stage(self, path):
         with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
         
-    def _reload_board(self, path):
-        st = self._load_stage(path)
+    def reload_board(self, path):
+        st = self.load_stage(path)
         grid = HexGrid.from_stage(st)
         board = Board(grid, st)
 
@@ -183,19 +509,19 @@ class GameplayScene(Scene):
 
         return board, st, hex_size
     
-    def _open_pause_modal(self):
+    def open_pause_modal(self):
         # 클리어된 상태에서는 굳이 열 필요 없음
         if self.board.is_game_over and self.board.is_win:
             return
         self.pause_active = True
 
-    def _stage_label_from(self, st, path):
+    def stage_label_from(self, st, path):
         if isinstance(st, dict) and "name" in st:
             return st["name"]
         m = re.search(r"(\d+)\.json$", path)
         return f"Stage {m.group(1)}" if m else path
 
-    def _next_stage_path(self, path):
+    def next_stage_path(self, path):
         cur = path_to_stage_index(path)
         if cur is None:
             return path  # 숫자 못 뽑으면 그대로
@@ -207,6 +533,12 @@ class GameplayScene(Scene):
         nxt = cur + 1
         rel = stage_index_to_relpath(nxt)
         return os.path.join(self.game.BASE_DIR, rel)
+    
+    def on_stage_cleared(self):
+        idx = path_to_stage_index(self.stage_path)
+        if idx is not None and hasattr(self.game, "unlock_stage"):
+            self.game.unlock_stage(idx, TOTAL_STAGES)
+
 
     # ----- 이벤트 -----
     def handle_event(self, e):
@@ -287,6 +619,9 @@ class GameplayScene(Scene):
     # ----- 프레임 -----
     def update(self, dt):
         if self.board.is_game_over and self.board.is_win:
+            # 아직 클리어 모달이 안 켜졌다면, 이번이 첫 클리어 프레임
+            if not self.modal_active:
+                self.on_stage_cleared()
             self.modal_active = True
 
     def draw(self, screen):

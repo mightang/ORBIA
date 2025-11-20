@@ -8,6 +8,7 @@ from core.render import (
 )
 from core.hexmath import pixel_to_axial
 from settings import WIDTH, HEIGHT, BOARD_CENTER, COL_BG
+from settings import HEX_SIZE as DEFAULT_HEX
 
 def load_font():
     # 1순위: 동봉 폰트
@@ -77,7 +78,13 @@ def next_stage_path(path):
 def reload_board(stage_path):
     st = load_stage(stage_path)
     grid = HexGrid.from_stage(st)
-    return Board(grid, st), st
+    board = Board(grid, st)
+
+    # 스테이지별 타일 크기
+    hex_size = st.get("hex_size") or st.get("tile_size") or DEFAULT_HEX
+    hex_size = int(hex_size)
+
+    return board, st, hex_size
 
 def main(stage_path=None):
     pygame.init()
@@ -85,14 +92,14 @@ def main(stage_path=None):
     clock = pygame.time.Clock()
     font = load_font()
 
+    if stage_path is None:
+        # 디폴트: 001 튜토리얼
+        stage_path = os.path.join(BASE_DIR, stage_index_to_relpath(1))
+
     board, st, hex_size= reload_board(stage_path)
     modal_active = False
     modal_btn_rects = {}
     stage_label = stage_label_from(st, stage_path)
-
-    if stage_path is None:
-        # 디폴트: 001 튜토리얼
-        stage_path = os.path.join(BASE_DIR, stage_index_to_relpath(1))
 
     running = True
     while running:
@@ -110,7 +117,7 @@ def main(stage_path=None):
                     if event.button == 1 and modal_btn_rects:
                         mx, my = event.pos
                         if modal_btn_rects["retry"].collidepoint(mx, my):
-                            board, st = reload_board(stage_path)
+                            board, st, hex_size = reload_board(stage_path)
                             stage_label = stage_label_from(st, stage_path)
                             modal_active = False
                             modal_btn_rects = {}
@@ -121,7 +128,7 @@ def main(stage_path=None):
                             # 다음 스테이지 시도 로드
                             nxt = next_stage_path(stage_path)
                             try:
-                                board, st = reload_board(nxt)
+                                board, st, hex_size = reload_board(nxt)
                                 stage_path = nxt
                                 stage_label = stage_label_from(st, stage_path)
                                 modal_active = False
@@ -167,5 +174,5 @@ def main(stage_path=None):
         clock.tick(60)
 
 if __name__ == "__main__":
-    stage = sys.argv[1] if len(sys.argv) > 1 else "stages/001.json"
+    stage = sys.argv[1] if len(sys.argv) > 1 else None
     main(stage)

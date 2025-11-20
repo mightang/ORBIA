@@ -23,5 +23,12 @@ COL_BTN_RETRY   = (72, 128, 240)
 COL_BTN_MENU    = (120, 120, 130)
 COL_BTN_NEXT    = (90, 180, 110)
 
-EDGE_HINT_OFFSET = 1.25   # 기존 1.05쯤이었다면 살짝 멀게
-EDGE_HINT_ROTATE = True   # 텍스트 방향 회전 여부
+EDGE_HINT_OFFSET = 1.25
+EDGE_HINT_ROTATE = True 
+
+RESOLUTIONS = [
+    (960, 720),
+    (1280, 720),
+    (1600, 900),
+]
+DEFAULT_RES_INDEX = 0
