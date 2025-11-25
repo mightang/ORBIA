@@ -26,10 +26,63 @@ class Button:
                     self.on_click()
 
     def draw(self, surf):
-        color = (58, 66, 86) if self.hover else self.bg
-        pygame.draw.rect(surf, color, self.rect, border_radius=10)
+        # 1) 드롭 섀도우
+        shadow_offset = 3
+        shadow_rect = self.rect.move(0, shadow_offset)
+        pygame.draw.rect(
+            surf,
+            (5, 8, 16),      # 아주 어두운 남색 계열 그림자
+            shadow_rect,
+            border_radius=14
+        )
+
+        # 2) 버튼 본체를 별도 Surface에 그림
+        btn_surf = pygame.Surface(self.rect.size, pygame.SRCALPHA)
+        btn_rect = btn_surf.get_rect()
+
+        # 기본 배경색 + hover 시 살짝 밝게
+        bg = self.bg
+        if self.hover:
+            lighten = 18
+            r = min(bg[0] + lighten, 255)
+            g = min(bg[1] + lighten, 255)
+            b = min(bg[2] + lighten, 255)
+            bg = (r, g, b)
+
+        # 2-1) 기본 바탕 (둥근 사각형)
+        corner_radius = 14
+        pygame.draw.rect(btn_surf, bg, btn_rect, border_radius=corner_radius)
+
+        # 2-2) 테두리 (은은한 라인)
+        border_color = (
+            min(bg[0] + 20, 255),
+            min(bg[1] + 25, 255),
+            min(bg[2] + 40, 255),
+        )
+        pygame.draw.rect(btn_surf, border_color, btn_rect, width=2, border_radius=corner_radius)
+
+        # 2-3) 위쪽에만 살짝 하이라이트 그라디언트 (모서리 안쪽으로만)
+        grad = pygame.Surface(self.rect.size, pygame.SRCALPHA)
+        h = self.rect.height
+        for y in range(h // 2):
+            t = y / max(1, (h // 2) - 1)
+            alpha = int(60 * (1.0 - t))  # 위쪽이 더 밝음
+
+            # 좌우를 corner_radius만큼 깎아서, 네 모서리 밖은 건드리지 않음
+            pygame.draw.line(
+                grad,
+                (255, 255, 255, alpha),
+                (corner_radius, y),
+                (self.rect.width - corner_radius, y),
+            )
+        btn_surf.blit(grad, (0, 0))
+
+        # 3) 텍스트
         label = self.font.render(self.text, True, self.fg)
-        surf.blit(label, label.get_rect(center=self.rect.center))
+        btn_surf.blit(label, label.get_rect(center=btn_rect.center))
+
+        # 4) 최종 blit
+        surf.blit(btn_surf, self.rect.topleft)
 
 class Slider:
     def __init__(self, rect, min_val, max_val, value, on_change=None,

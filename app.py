@@ -27,6 +27,14 @@ class App:
         if 0 <= self.res_index < len(self.resolutions):
             self.WIDTH, self.HEIGHT = self.resolutions[self.res_index]
 
+        # 디스플레이 모드 정의 (3가지)
+        # kind: "window" / "max_window" / "fullscreen"
+        self.display_modes = [
+            {"name": "창 모드",          "kind": "window"},
+            {"name": "큰 창 모드",       "kind": "max_window"},
+            {"name": "전체 화면",        "kind": "fullscreen"},
+        ]
+        self.display_mode_index = 0   # 기본: 창 모드
 
         # 사운드 관련
         self.SOUND_DIR = os.path.join(self.ASSET_DIR, "sounds")
@@ -35,7 +43,7 @@ class App:
         self.bgm_volume = 0.5
         self.sfx_volume = 0.8
 
-                # BGM 파일 경로
+        # BGM 파일 경로
         self.bgm_paths = {
             "main":          os.path.join(self.SOUND_DIR, "main.ogg"),
             "basic":         os.path.join(self.SOUND_DIR, "basic.ogg"),
@@ -60,13 +68,6 @@ class App:
 
         self.update_bgm_volume()
         self.update_sfx_volume()
-
-        self.screen = pygame.display.set_mode((self.WIDTH, self.HEIGHT))
-        pygame.display.set_caption("HEXFIELD")
-        self.clock = pygame.time.Clock()
-
-        self.current_scene = TitleScene(self)
-        self.running = True
 
         # --- Button에서 UI 클릭 소리를 쓸 수 있도록 연결 ---
         from core import ui as ui_mod
@@ -142,6 +143,51 @@ class App:
             self.res_index = index
             self.WIDTH, self.HEIGHT = self.resolutions[index]
             self.screen = pygame.display.set_mode((self.WIDTH, self.HEIGHT))
+
+    def set_display_mode(self, index: int):
+        """표시 모드 변경: 창 / 큰 창 / 전체 화면."""
+        if not (0 <= index < len(self.display_modes)):
+            return
+
+        self.display_mode_index = index
+        mode = self.display_modes[index]
+        kind = mode.get("kind", "window")
+
+        # 기준 비율은 settings 기준
+        base_w, base_h = settings.WIDTH, settings.HEIGHT
+        ratio = base_w / base_h
+
+        info = pygame.display.Info()
+        desktop_w, desktop_h = info.current_w, info.current_h
+
+        flags = 0
+
+        if kind == "window":
+            # 기본 작은 창
+            w, h = base_w, base_h
+
+        elif kind == "max_window":
+            # 화면 안에서 비율 유지하며 최대한 크게
+            margin = 80  # 작업표시줄/타이틀바 고려 여백
+            max_w = max(400, desktop_w - margin)
+            max_h = max(300, desktop_h - margin)
+
+            # 우선 높이에 맞추고, 넘치면 너비에 맞춤
+            h = max_h
+            w = int(h * ratio)
+            if w > max_w:
+                w = max_w
+                h = int(w / ratio)
+
+        elif kind == "fullscreen":
+            flags = pygame.FULLSCREEN
+            w, h = desktop_w, desktop_h
+
+        else:
+            w, h = base_w, base_h
+
+        self.WIDTH, self.HEIGHT = w, h
+        self.screen = pygame.display.set_mode((w, h), flags)
 
     # --- 사운드 유틸 ---
     def update_bgm_volume(self):
