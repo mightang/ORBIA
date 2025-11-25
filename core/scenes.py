@@ -79,6 +79,8 @@ class TitleScene(Scene):
             font=self.ui_font,
             on_click=self.quit_game
         )
+        if hasattr(self.game, "play_bgm"):
+            self.game.play_bgm("main")
 
     def go_level_select(self):
         self.game.change_scene(LevelSelectScene(self.game))
@@ -180,6 +182,8 @@ class OptionsScene(Scene):
             font = self.small_font,
             on_click = self.open_reset_modal
         )
+        if hasattr(self.game, "play_bgm"):
+            self.game.play_bgm("main")
 
     def open_reset_modal(self):
         self.reset_modal_active = True
@@ -198,11 +202,13 @@ class OptionsScene(Scene):
 
     def on_bgm_change(self, value):
         self.game.bgm_volume = float(value)
-        # 나중에 pygame.mixer.music.set_volume(value) 등으로 연결 가능
+        if hasattr(self.game, "update_bgm_volume"):
+            self.game.update_bgm_volume()
 
     def on_sfx_change(self, value):
         self.game.sfx_volume = float(value)
-        # 효과음 재생 시 이 값을 곱해서 사용할 수 있음
+        if hasattr(self.game, "update_sfx_volume"):
+            self.game.update_sfx_volume()
 
     def select_resolution(self, idx):
         # 해상도 변경 후, 옵션 씬을 새로 만들어 레이아웃 재계산
@@ -217,14 +223,18 @@ class OptionsScene(Scene):
         # 🔹 초기화 확인 모달이 떠 있을 때는 그쪽만 처리
         if self.reset_modal_active:
             if e.type == pygame.KEYDOWN and e.key == pygame.K_ESCAPE:
-                self._cancel_reset()
+                self.cancel_reset()
                 return
-
+            
             if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1 and self.reset_modal_btns:
                 mx, my = e.pos
                 if self.reset_modal_btns["ok"].collidepoint(mx, my):
+                    if hasattr(self.game, "play_ui_click"):
+                        self.game.play_ui_click()
                     self.confirm_reset()
                 elif self.reset_modal_btns["cancel"].collidepoint(mx, my):
+                    if hasattr(self.game, "play_ui_click"):
+                        self.game.play_ui_click()
                     self.cancel_reset()
             return
         
@@ -346,6 +356,8 @@ class CreditsScene(Scene):
             "",
             "감사합니다!"
         ]
+        if hasattr(self.game, "play_bgm"):
+            self.game.play_bgm("main")
 
     def _back_to_title(self):
         self.game.change_scene(TitleScene(self.game))
@@ -380,6 +392,7 @@ class CreditsScene(Scene):
             y += img.get_height() + 4
 
         self.back_btn.draw(screen)
+        
 
 
 # 2) 레벨 선택 (1~37)
@@ -401,6 +414,8 @@ class LevelSelectScene(Scene):
             font=self.ui_font,
             on_click=self.go_title
         )
+        if hasattr(self.game, "play_bgm"):
+            self.game.play_bgm("main")
 
     def build_buttons(self):
         W, H = self.game.WIDTH, self.game.HEIGHT
@@ -491,12 +506,38 @@ class GameplayScene(Scene):
             font=self.game.load_font(18),
             on_click=self.open_pause_modal
         )
-
+        self.apply_stage_bgm()
         
     # ----- 유틸 -----
     def load_stage(self, path):
         with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
+        
+    def apply_stage_bgm(self):
+        """현재 stage_path에 맞는 BGM을 선택해서 재생."""
+        idx = path_to_stage_index(self.stage_path)
+        key = "main"
+
+        if idx is None:
+            key = "main"
+        elif 2 <= idx <= 7:
+            key = "basic"            # basic 스테이지 6개
+        elif 8 <= idx <= 13:
+            key = "intermediate_1"   # intermediate 1~6
+        elif 14 <= idx <= 19:
+            key = "intermediate_2"   # intermediate 7~12
+        elif 20 <= idx <= 25:
+            key = "advance_1"        # advance 1~6
+        elif 26 <= idx <= 31:
+            key = "advance_2"        # advance 7~12
+        elif 32 <= idx <= 37:
+            key = "advance_3"        # advance 13~18
+        else:
+            key = "main"             # 혹시 범위 밖이면 메인으로
+
+        if hasattr(self.game, "play_bgm"):
+            self.game.play_bgm(key)
+
         
     def reload_board(self, path):
         st = self.load_stage(path)
@@ -556,18 +597,25 @@ class GameplayScene(Scene):
             if self.modal_active and e.button == 1 and self.modal_btn_rects:
                 mx, my = e.pos
                 if self.modal_btn_rects["retry"].collidepoint(mx, my):
-                    self.board, self.stage, self.hex_size = self._reload_board(self.stage_path)
-                    self.stage_label = self._stage_label_from(self.stage, self.stage_path)
+                    if hasattr(self.game, "play_ui_click"):
+                        self.game.play_ui_click()
+                    self.board, self.stage, self.hex_size = self.reload_board(self.stage_path)
+                    self.stage_label = self.stage_label_from(self.stage, self.stage_path)
                     self.modal_active = False
                     self.modal_btn_rects = {}
                 elif self.modal_btn_rects["menu"].collidepoint(mx, my):
+                    if hasattr(self.game, "play_ui_click"):
+                        self.game.play_ui_click()
                     self.game.change_scene(LevelSelectScene(self.game))
                 elif self.modal_btn_rects["next"].collidepoint(mx, my):
-                    nxt = self._next_stage_path(self.stage_path)
+                    if hasattr(self.game, "play_ui_click"):
+                        self.game.play_ui_click()
+                    nxt = self.next_stage_path(self.stage_path)
                     if os.path.exists(nxt):
                         self.stage_path = nxt
-                        self.board, self.stage, self.hex_size = self._reload_board(self.stage_path)
-                        self.stage_label = self._stage_label_from(self.stage, self.stage_path)
+                        self.board, self.stage, self.hex_size = self.reload_board(self.stage_path)
+                        self.stage_label = self.stage_label_from(self.stage, self.stage_path)
+                        self.apply_stage_bgm() 
                         self.modal_active = False
                         self.modal_btn_rects = {}
                 return  # 모달 중엔 아래 입력 무시
@@ -576,16 +624,19 @@ class GameplayScene(Scene):
             if self.pause_active and e.button == 1 and self.pause_btn_rects:
                 mx, my = e.pos
                 if self.pause_btn_rects["resume"].collidepoint(mx, my):
-                    # 계속하기
+                    if hasattr(self.game, "play_ui_click"):
+                        self.game.play_ui_click()
                     self.pause_active = False
                     self.pause_btn_rects = {}
                 elif self.pause_btn_rects["level"].collidepoint(mx, my):
-                    # 레벨 선택으로
+                    if hasattr(self.game, "play_ui_click"):
+                        self.game.play_ui_click()
                     self.game.change_scene(LevelSelectScene(self.game))
                 elif self.pause_btn_rects["restart"].collidepoint(mx, my):
-                    # 현재 스테이지 처음부터
-                    self.board, self.stage, self.hex_size = self._reload_board(self.stage_path)
-                    self.stage_label = self._stage_label_from(self.stage, self.stage_path)
+                    if hasattr(self.game, "play_ui_click"):
+                        self.game.play_ui_click()
+                    self.board, self.stage, self.hex_size = self.reload_board(self.stage_path)
+                    self.stage_label = self.stage_label_from(self.stage, self.stage_path)
                     self.pause_active = False
                     self.pause_btn_rects = {}
                 return  # 모달 중에는 보드 입력 막음
@@ -611,10 +662,28 @@ class GameplayScene(Scene):
             lx, ly = mx - BOARD_CENTER[0], my - BOARD_CENTER[1]
             q, r = pixel_to_axial(lx, ly, self.hex_size)
             if (q, r) in self.board.tiles:
+                # 사운드 판별을 위해 이전 상태 저장
+                old_mistakes = self.board.mistakes
+                old_revealed = getattr(self.board, "revealed_count", 0)
+                old_flags    = getattr(self.board, "flag_count", 0)
+
                 if e.button == 1:
                     self.board.reveal(q, r)
                 elif e.button == 3:
                     self.board.toggle_flag(q, r)
+
+                # 실수 증가 여부 체크
+                if self.board.mistakes > old_mistakes:
+                    # 잘못 클릭 (실수 증가)
+                    if hasattr(self.game, "play_tile_click"):
+                        self.game.play_tile_click(ok=False)
+                else:
+                    # 실수는 아니지만, 실제로 뭔가 상태가 바뀐 경우에만 "옳은 클릭"으로 취급
+                    new_revealed = getattr(self.board, "revealed_count", 0)
+                    new_flags    = getattr(self.board, "flag_count", 0)
+                    if (new_revealed > old_revealed) or (new_flags != old_flags):
+                        if hasattr(self.game, "play_tile_click"):
+                            self.game.play_tile_click(ok=True)
 
     # ----- 프레임 -----
     def update(self, dt):

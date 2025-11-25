@@ -27,9 +27,50 @@ class App:
         if 0 <= self.res_index < len(self.resolutions):
             self.WIDTH, self.HEIGHT = self.resolutions[self.res_index]
 
-        # 볼륨 상태 (0.0 ~ 1.0)
+
+        # 사운드 관련
+        self.SOUND_DIR = os.path.join(self.ASSET_DIR, "sounds")
+        pygame.mixer.init()
+
         self.bgm_volume = 0.5
         self.sfx_volume = 0.8
+
+                # BGM 파일 경로
+        self.bgm_paths = {
+            "main":          os.path.join(self.SOUND_DIR, "main.ogg"),
+            "basic":         os.path.join(self.SOUND_DIR, "basic.ogg"),
+            "intermediate_1":os.path.join(self.SOUND_DIR, "intermediate_1.ogg"),
+            "intermediate_2":os.path.join(self.SOUND_DIR, "intermediate_2.ogg"),
+            "advance_1":     os.path.join(self.SOUND_DIR, "advance_1.ogg"),
+            "advance_2":     os.path.join(self.SOUND_DIR, "advance_2.ogg"),
+            "advance_3":     os.path.join(self.SOUND_DIR, "advance_3.ogg"),
+        }
+        self.current_bgm_key = None
+
+        # SFX 로드
+        self.sfx_ui_click = pygame.mixer.Sound(
+            os.path.join(self.SOUND_DIR, "ui_click.wav")
+        )
+        self.sfx_tile_correct = pygame.mixer.Sound(
+            os.path.join(self.SOUND_DIR, "tile_click_correct.wav")
+        )
+        self.sfx_tile_false = pygame.mixer.Sound(
+            os.path.join(self.SOUND_DIR, "tile_click_false.wav")
+        )
+
+        self.update_bgm_volume()
+        self.update_sfx_volume()
+
+        self.screen = pygame.display.set_mode((self.WIDTH, self.HEIGHT))
+        pygame.display.set_caption("HEXFIELD")
+        self.clock = pygame.time.Clock()
+
+        self.current_scene = TitleScene(self)
+        self.running = True
+
+        # --- Button에서 UI 클릭 소리를 쓸 수 있도록 연결 ---
+        from core import ui as ui_mod
+        ui_mod.play_ui_click = self.play_ui_click
 
         self.screen = pygame.display.set_mode((self.WIDTH, self.HEIGHT))
         pygame.display.set_caption("HEXFIELD")
@@ -101,6 +142,50 @@ class App:
             self.res_index = index
             self.WIDTH, self.HEIGHT = self.resolutions[index]
             self.screen = pygame.display.set_mode((self.WIDTH, self.HEIGHT))
+
+    # --- 사운드 유틸 ---
+    def update_bgm_volume(self):
+        pygame.mixer.music.set_volume(self.bgm_volume)
+
+    def update_sfx_volume(self):
+        vol = self.sfx_volume
+        for snd in (self.sfx_ui_click, self.sfx_tile_correct, self.sfx_tile_false):
+            if snd is not None:
+                snd.set_volume(vol)
+
+    def play_bgm(self, key: str):
+        """지정한 키의 BGM을 loop 재생 (같은 키면 재로딩 없이 볼륨만)."""
+        path = self.bgm_paths.get(key)
+        if not path:
+            return
+
+        # 이미 같은 곡이면 볼륨만 맞추고 끝
+        if self.current_bgm_key == key:
+            self.update_bgm_volume()
+            return
+
+        try:
+            pygame.mixer.music.load(path)
+            pygame.mixer.music.set_volume(self.bgm_volume)
+            pygame.mixer.music.play(-1)  # 무한 루프
+            self.current_bgm_key = key
+        except pygame.error as e:
+            print("[WARN] BGM 재생 실패:", e)
+
+    def stop_bgm(self):
+        pygame.mixer.music.stop()
+        self.current_bgm_key = None
+
+    def play_ui_click(self):
+        """모든 UI 버튼(타일 제외) 클릭 시 호출."""
+        if self.sfx_ui_click is not None:
+            self.sfx_ui_click.play()
+
+    def play_tile_click(self, ok: bool):
+        """타일 클릭: 옳으면 True, 실수면 False."""
+        snd = self.sfx_tile_correct if ok else self.sfx_tile_false
+        if snd is not None:
+            snd.play()
 
     def run(self):
         self.running = True

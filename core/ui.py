@@ -1,6 +1,8 @@
 # core/ui.py
 import pygame
 
+play_ui_click = None
+
 class Button:
     def __init__(self, rect, text, font, on_click, bg=(40, 46, 60), fg=(234, 242, 255)):
         self.rect = pygame.Rect(rect)
@@ -16,7 +18,12 @@ class Button:
             self.hover = self.rect.collidepoint(e.pos)
         elif e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
             if self.rect.collidepoint(e.pos):
-                if self.on_click: self.on_click()
+                # 먼저 UI 클릭 사운드
+                if play_ui_click is not None:
+                    play_ui_click()
+                # 그 다음 실제 버튼 동작
+                if self.on_click:
+                    self.on_click()
 
     def draw(self, surf):
         color = (58, 66, 86) if self.hover else self.bg

@@ -52,7 +52,6 @@ def stage_index_to_relpath(idx: int) -> str:
 
     return os.path.join("stages", subdir, f"{num:03d}.json")
 
-
 def path_to_stage_index(path: str):
     m = re.search(r"(\d+)\.json$", path)
     return int(m.group(1)) if m else None
