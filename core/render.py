@@ -3,9 +3,7 @@ import math
 from .hexmath import axial_to_pixel, hex_corners
 from .board import C_BLOCKED, C_COVERED, C_FLAGGED, C_REVEALED
 from settings import (
-    COL_BG, COL_GRID, COL_COVERED, COL_BLOCKED, COL_REVEAL, COL_MINE, COL_TEXT, COL_FLAG_TILE,
-    COL_BTN_BG, COL_BTN_BORDER, COL_BTN_TEXT, COL_BTN_RETRY, COL_BTN_MENU, COL_BTN_NEXT,
-    EDGE_HINT_OFFSET, EDGE_HINT_ROTATE
+    COL_COVERED, COL_MINE, COL_TEXT, EDGE_HINT_OFFSET
 )
 
 # ---- 공통 방향 벡터 (엣지 힌트용) ----
@@ -109,24 +107,22 @@ def draw_board(surface, board, center, size, font):
 
         # -------- BLOCKED ----------
         if t.state == C_BLOCKED:
-            pygame.draw.polygon(surface, darken(COL_BG, 6), outer_corners)
-            pygame.draw.polygon(surface, COL_GRID, outer_corners, width=1)
             continue
 
         # -------- TILE COLOR LOGIC ----------
-        # ★1) 깃발 = 붉은 보호막
+        # 깃발 = 붉은 보호막
         if t.state == C_FLAGGED:
             base_color  = darken(COL_MINE, 25)   # 어두운 붉은 바깥
             inner_color = COL_MINE               # 메인 보호막
             edge_color  = lighten(COL_MINE, 35)
 
-        # ★2) 덮인 타일(회색 금속)
+        # 덮인 타일(회색 금속)
         elif t.state == C_COVERED:
             base_color  = COL_COVERED
             inner_color = lighten(COL_COVERED, 10)
             edge_color  = darken(COL_COVERED, 18)
 
-        # ★3) 안전 타일(REVEALED & not mine) — 더 단조롭게
+        # 안전 타일(REVEALED & not mine)
         elif t.state == C_REVEALED:
             # 톤다운된 푸른-회색
             safe_base  = (70, 100, 125)
@@ -235,13 +231,52 @@ def draw_edge_hints(surface, board, center, size, font):
                 pygame.draw.lines(overlay, (255, 255, 255, 120), False, pts, 3)
                 surface.blit(overlay, (0, 0))
 
-
 def draw_topright_info(surface, board, font, pad=12):
     w, _ = surface.get_size()
     s = f"남은 지뢰 {board.mines_left}   실수 {board.mistakes}"
     img = font.render(s, True, COL_TEXT)
-    rect = img.get_rect(topright=(w - pad, pad))
-    surface.blit(img, rect)
+
+    # 패널 안쪽 여백
+    inner_pad_x = 12
+    inner_pad_y = 8
+
+    panel_w = img.get_width() + inner_pad_x * 2
+    panel_h = img.get_height() + inner_pad_y * 2
+
+    panel_rect = pygame.Rect(0, 0, panel_w, panel_h)
+    panel_rect.topright = (w - pad, pad)
+
+    # 튜토리얼 / 클리어 모달과 비슷한 색감
+    panel_bg   = (20, 26, 46)
+    panel_edge = (110, 130, 190)
+
+    # 약간 투명한 패널 서피스 위에 그리기
+    hud_surf = pygame.Surface(panel_rect.size, pygame.SRCALPHA)
+
+    # 배경 (살짝 투명)
+    bg_color = (*panel_bg, 210)
+    pygame.draw.rect(
+        hud_surf, bg_color,
+        hud_surf.get_rect(),
+        border_radius=14
+    )
+
+    # 테두리
+    border_color = (*panel_edge, 255)
+    pygame.draw.rect(
+        hud_surf, border_color,
+        hud_surf.get_rect(),
+        width=2,
+        border_radius=14
+    )
+
+    # 텍스트는 패널 안쪽에 패딩 주고 배치
+    text_rect = img.get_rect()
+    text_rect.topleft = (inner_pad_x, inner_pad_y)
+    hud_surf.blit(img, text_rect)
+
+    # 최종적으로 화면에 blit
+    surface.blit(hud_surf, panel_rect.topleft)
 
 def draw_success_modal(surface, stage_label: str, mistakes: int, font, *, pad=20, show_next: bool = True):
     w, h = surface.get_size()
@@ -473,7 +508,7 @@ def draw_pause_modal(surface, stage_label: str, mistakes: int, font, *, pad=20, 
     return rects
 
 # ---- 새로 추가: 테두리 숫자 히트 테스트 ----
-def edge_hint_hit_test(board, center, size, font, mouse_pos, radius=20):
+def edge_hint_hit_test(board, center, size, mouse_pos, radius=20):
     if not hasattr(board, "edge_hints"):
         return None
 

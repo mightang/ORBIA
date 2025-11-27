@@ -3,7 +3,7 @@ import os, json, re, math
 import pygame
 from core.ui import Button, draw_label_center, Slider
 from core import render as render_mod
-from core.board import Board, C_REVEALED
+from core.board import Board, C_REVEALED, C_BLOCKED
 from core.grid import HexGrid, cube_len
 from core.hexmath import pixel_to_axial, hex_corners, axial_to_pixel
 from settings import COL_FLAG_TILE, COL_COVERED, HEX_SIZE
@@ -11,7 +11,9 @@ from settings import COL_FLAG_TILE, COL_COVERED, HEX_SIZE
 from animations.title_space import TitleBackground
 from animations.tile_reveal import TileRevealAnim, draw_reveal_anims
 from animations.tile_mistake import TileShakeAnim, draw_shake_anims
-
+from animations.tile_hover import TileHoverAnim, draw_hover_anim
+from animations.stage_star_glow import draw_stage_star_glow
+from animations.game_hex_bg import GameHexBackground
 
 TOTAL_STAGES = 37
 MAJOR_STEP_LAST_INDICES = {1, 7, 19, 37}
@@ -78,6 +80,21 @@ class TitleScene(Scene):
         # 배경 로드
         self.bg = TitleBackground((W, H))
 
+        # 타이틀 이미지 로드
+        logo_path = os.path.join(self.game.ASSET_DIR, "images", "game_title.png")
+
+        # 원본 로고 로드
+        orig_logo = pygame.image.load(logo_path).convert_alpha()
+
+        # 원하는 배율 (예: 0.8 = 80% 크기)
+        scale = 0.55
+
+        w, h = orig_logo.get_size()
+        new_size = (int(w * scale), int(h * scale))
+
+        # 부드럽게 축소
+        self.title_img = pygame.transform.smoothscale(orig_logo, new_size)
+
         # 큰 시작 버튼
         start_w, start_h = 260, 60
         start_x = (W - start_w) // 2
@@ -135,15 +152,18 @@ class TitleScene(Scene):
         self.last_size = None
         self.relayout(game.screen.get_size())
 
-        if hasattr(self.game, "play_bgm"):
-            self.game.play_bgm("main")
+        # 처음 실행 시에만 메인 BGM 재생.
+        # 이미 다른 BGM이 재생 중이면 건드리지 않는다.
+        if getattr(self.game, "current_bgm_key", None) is None:
+            if hasattr(self.game, "play_bgm"):
+                self.game.play_bgm("main")
 
     def relayout(self, size):
         W, H = size
         self.last_size = size
         start_w, start_h = 260, 60
         start_x = (W - start_w) // 2
-        start_y = int(H * 0.42)
+        start_y = int(H * 0.55)
         self.start_btn.rect.update(start_x, start_y, start_w, start_h)
 
         sub_w, sub_h = 200, 46
@@ -196,11 +216,12 @@ class TitleScene(Scene):
             screen.fill((14, 18, 32))
 
         W, H = size
-        draw_label_center(
-            screen, "GAME TITLE",
-            self.title_font,
-            (W // 2, int(H * 0.28))
-        )
+        # 타이틀 이미지 그리기
+        img = self.title_img
+        rect = img.get_rect()
+        rect.center = (W // 2, int(H * 0.32))
+        screen.blit(img, rect)
+
         self.start_btn.draw(screen)
         self.option_btn.draw(screen)
         self.credit_btn.draw(screen)
@@ -281,8 +302,6 @@ class OptionsScene(Scene):
             font = self.small_font,
             on_click = self.open_reset_modal
         )
-        if hasattr(self.game, "play_bgm"):
-            self.game.play_bgm("main")
 
     def open_reset_modal(self):
         self.reset_modal_active = True
@@ -310,10 +329,10 @@ class OptionsScene(Scene):
             self.game.update_sfx_volume()
 
     def select_resolution(self, idx):
-        # 화면 표시 모드 변경 후, 옵션 씬을 새로 만들어 레이아웃 재계산
         if hasattr(self.game, "set_display_mode"):
             self.game.set_display_mode(idx)
-        self.game.change_scene(OptionsScene(self.game))
+        # 해상도 바꾸는 건 즉시 반영하는 게 자연스러우니 전환 끄기
+        self.game.change_scene(OptionsScene(self.game), use_transition=False)
 
     def back_to_title(self):
         # 타이틀을 새로 생성하면 버튼 위치도 새 해상도 기준으로 재배치됨
@@ -393,9 +412,6 @@ class OptionsScene(Scene):
 
         return {"ok": ok_rect, "cancel": cancel_rect}
 
-    def update(self, dt):
-        pass
-
     def draw(self, screen):
         screen.fill((10, 14, 24))
         W, H = self.game.WIDTH, self.game.HEIGHT
@@ -446,24 +462,34 @@ class CreditsScene(Scene):
             rect=(20, 20, 100, 40),
             text="뒤로가기",
             font=self.small_font,
-            on_click=self.back_to_title
+            on_click=self.back_to_title,   # ← 이 메서드를 밑에 정의
         )
 
         # 임시 크레딧 텍스트
         self.lines = [
-            "HEXFIELD (임시 타이틀)",
             "",
-            "기획 / 구현 : 김태영",
-            "도움 : ChatGPT",
             "",
-            "감사합니다!"
+            "THANKS FOR PLAYING!",
+            "",
+            "기획: 김태영",
+            "구현: 김태영",
+            "버그 수정: 김태영",
+            "곧 군대 가는 사람: 김태영",
+            "",
+            "2025 OSS Term Project"
         ]
-        if hasattr(self.game, "play_bgm"):
-            self.game.play_bgm("main")
+        # 크레딧 들어왔을 때는 BGM 안 건드리려면 이 부분은 빼도 됨
+        # if hasattr(self.game, "play_bgm"):
+        #     self.game.play_bgm("main")
+
+    def back_to_title(self):
+        # 타이틀로 돌아가기
+        from core.scenes import TitleScene  # 같은 파일이면 맨 위 import 안 해도 됨
+        self.game.change_scene(TitleScene(self.game))
 
     def handle_event(self, e):
         if e.type == pygame.KEYDOWN and e.key == pygame.K_ESCAPE:
-            self._back_to_title()
+            self.back_to_title()   # 언더바 없는 걸로 통일
             return
         self.back_btn.handle_event(e)
 
@@ -477,11 +503,11 @@ class CreditsScene(Scene):
         total_h = 0
         rendered = []
         for s in self.lines:
-            img = self.ui_font.render(s, True, (234,242,255))
+            img = self.ui_font.render(s, True, (234, 242, 255))
             rendered.append(img)
             total_h += img.get_height() + 4
 
-        y = int(H*0.35) - total_h//2
+        y = int(H*0.35) - total_h // 2
         for img in rendered:
             rect = img.get_rect(center=(W//2, y))
             screen.blit(img, rect)
@@ -508,6 +534,7 @@ class LevelSelectScene(Scene):
         # 37칸 hex-grid 기반 스테이지 타일 정보
         self.stage_tiles = []   # 각 타일: {"idx", "poly", "center", "cleared", "locked", "ring"}
         self.last_size = None
+        self.glow_time = 0.0
 
         # 뒤로가기 버튼
         btn_w, btn_h = 100, 40
@@ -521,9 +548,6 @@ class LevelSelectScene(Scene):
 
         # 최초 레이아웃
         self.build_layout(W, H)
-
-        if hasattr(self.game, "play_bgm"):
-            self.game.play_bgm("main")
 
 
     # --- 헥사 타일 내부 폴리곤 (안쪽 보호막/판) ---
@@ -604,6 +628,7 @@ class LevelSelectScene(Scene):
             is_unlocked = (idx <= self.max_unlocked)
             is_cleared = (idx < self.max_unlocked)
             locked = not is_unlocked
+            stars = self.get_stage_stars(idx)  # ← 추가
 
             self.stage_tiles.append({
                 "idx": idx,
@@ -612,12 +637,31 @@ class LevelSelectScene(Scene):
                 "ring": ring,
                 "cleared": is_cleared,
                 "locked": locked,
+                "stars": stars,
             })
 
         # 뒤로가기 버튼은 화면 좌상단 고정
         back_w, back_h = 100, 40
         pad = 20
         self.back_btn.rect.update(pad, pad, back_w, back_h)
+
+    def get_stage_stars(self, idx: int) -> int:
+        """저장된 최고 별 개수를 0~3 범위로 돌려준다."""
+        m = getattr(self.game, "stage_best_stars", {})
+        if not isinstance(m, dict):
+            return 0
+
+        if idx in m:
+            v = m[idx]
+        elif str(idx) in m:
+            v = m[str(idx)]
+        else:
+            return 0
+
+        try:
+            return max(0, min(3, int(v)))
+        except (TypeError, ValueError):
+            return 0
 
     # --- 스테이지 시작 ---
     def start_level(self, idx: int):
@@ -651,6 +695,8 @@ class LevelSelectScene(Scene):
         # 우주 배경 애니메이션 업데이트
         if hasattr(self, "bg"):
             self.bg.update(dt)
+
+        self.glow_time += dt
 
 
     def draw(self, screen):
@@ -750,6 +796,10 @@ class LevelSelectScene(Scene):
             txt = self.ui_font.render(label, True, text_color)
             screen.blit(txt, txt.get_rect(center=(cx, cy)))
 
+            # 별 3개 스테이지에만 펄스 하이라이트
+            if tile.get("stars", 0) >= 3:
+                draw_stage_star_glow(screen, (cx, cy), poly, self.glow_time)
+
         # 뒤로가기 버튼
         self.back_btn.draw(screen)
 
@@ -760,6 +810,9 @@ class GameplayScene(Scene):
         super().__init__(game)
         self.stage_path = stage_path
         self.font = self.game.load_font(20)
+
+        W, H = self.game.WIDTH, self.game.HEIGHT
+        self.bg = GameHexBackground((W, H))
 
         self.board, self.stage, self.hex_size = self.reload_board(stage_path)
         self.stage_label = self.stage_label_from(self.stage, stage_path)
@@ -798,6 +851,17 @@ class GameplayScene(Scene):
         self.reveal_anims = []
         self.reveal_anim_duration = 0.15  # 초 단위
         self.reveal_anim_wave_delay = 0.04    # flood fill 시 인접 칸 사이 딜레이(초)
+
+        # JSON에서 시작 상태가 REVEALED인 칸에도 리빌 애니메이션 적용
+        for q, r in self.stage.get("start_revealed", []):
+            t = self.board.tiles.get((q, r))
+            if t is not None and t.state == C_REVEALED and not t.is_mine:
+                self.reveal_anims.append(
+                    TileRevealAnim(q, r, duration=self.reveal_anim_duration)
+                )
+
+        self.hover_anim = None          # TileHoverAnim 인스턴스
+        self.hover_tile = None          # (q, r) 또는 None
         
     # ----- 유틸 -----
     def load_stage(self, path):
@@ -875,7 +939,10 @@ class GameplayScene(Scene):
     def on_stage_cleared(self):
         idx = path_to_stage_index(self.stage_path)
         if idx is not None and hasattr(self.game, "unlock_stage"):
-            self.game.unlock_stage(idx, TOTAL_STAGES)
+            # 실수 횟수 → 별 개수 환산
+            star_count = render_mod.calc_star_count(self.board.mistakes)
+            # 잠금 해제 + 최고 별 기록 갱신
+            self.game.unlock_stage(idx, TOTAL_STAGES, star_count=star_count)
 
     def load_tutorial_images(self):
         """assets/images/tutorial/tuto_01~04.png 로부터 튜토리얼 이미지 로드."""
@@ -915,8 +982,15 @@ class GameplayScene(Scene):
         # 현재 페이지 이미지
         img = self.tutorial_pages[self.tutorial_index]
         iw, ih = img.get_size()
+
+        # 위쪽: 건너뛰기 텍스트용 여백 + 약간의 공간
+        top_margin = 72  # 기존 32보다 훨씬 아래에서 시작
+
+        # 아래쪽: 페이지 번호 + 버튼 영역 여백
+        bottom_reserved = 120
+
         max_iw = panel_w - 60
-        max_ih = panel_h - 140
+        max_ih = panel_h - (top_margin + bottom_reserved)
         scale = min(max_iw / iw, max_ih / ih, 1.0)
         if scale < 1.0:
             img_disp = pygame.transform.smoothscale(img, (int(iw * scale), int(ih * scale)))
@@ -1007,8 +1081,7 @@ class GameplayScene(Scene):
             # 튜토리얼 중에는 다른 입력 무시
             return
 
-        # ▼ 여기부터는 "튜토리얼이 꺼진 상태"에서만 처리
-
+        # ESC
         if e.type == pygame.KEYDOWN and e.key == pygame.K_ESCAPE:
             if self.modal_active:
                 return
@@ -1018,19 +1091,23 @@ class GameplayScene(Scene):
         if not self.modal_active and not self.pause_active:
             self.menu_button.handle_event(e)
 
+        # ----- 마우스 클릭 처리 -----
         if e.type == pygame.MOUSEBUTTONDOWN:
             w, h = self.game.WIDTH, self.game.HEIGHT
             cx, cy = w // 2, h // 2
 
+            # 1) 클리어 모달 버튼
             if self.modal_active and e.button == 1 and self.modal_btn_rects:
                 mx, my = e.pos
                 if self.modal_btn_rects["retry"].collidepoint(mx, my):
                     # 현재 스테이지 재시도
                     self.board, self.stage, self.hex_size = self.reload_board(self.stage_path)
                     self.stage_label = self.stage_label_from(self.stage, self.stage_path)
-                    
+
                     self.reveal_anims.clear()
                     self.mistake_anims.clear()
+                    self.hover_anim = None
+                    self.hover_tile = None
 
                     self.modal_active = False
                     self.modal_btn_rects = {}
@@ -1038,7 +1115,7 @@ class GameplayScene(Scene):
                     # 레벨 선택 화면으로
                     self.game.change_scene(LevelSelectScene(self.game))
                 elif "next" in self.modal_btn_rects and self.modal_btn_rects["next"].collidepoint(mx, my):
-                    # 다음 스테이지로 진행 (큰 단계 끝이 아닐 때만 버튼이 존재)
+                    # 다음 스테이지로 진행
                     nxt = self.next_stage_path(self.stage_path)
                     if os.path.exists(nxt):
                         self.stage_path = nxt
@@ -1049,8 +1126,7 @@ class GameplayScene(Scene):
                         self.modal_btn_rects = {}
                 return  # 모달 중엔 아래 입력 무시
 
-            
-            # 2) 일시정지 모달이 활성화된 경우: 일시정지 모달 버튼만 처리
+            # 2) 일시정지 모달 버튼
             if self.pause_active and e.button == 1 and self.pause_btn_rects:
                 mx, my = e.pos
                 if self.pause_btn_rects["resume"].collidepoint(mx, my):
@@ -1059,7 +1135,6 @@ class GameplayScene(Scene):
                     self.pause_active = False
                     self.pause_btn_rects = {}
                 elif self.pause_btn_rects["level"].collidepoint(mx, my):
-                    # 튜토리얼 클리어 전에는 레벨 선택 잠금
                     if getattr(self.game, "max_unlocked_stage", 1) <= 1:
                         self.game.change_scene(TitleScene(self.game))
                     else:
@@ -1072,11 +1147,11 @@ class GameplayScene(Scene):
                     self.pause_active = False
                     self.pause_btn_rects = {}
                 return  # 모달 중에는 보드 입력 막음
-            
-            # 3) (새로 추가) 테두리 숫자 클릭 처리
+
+            # 3) 테두리 숫자 클릭 처리
             if not self.modal_active and not self.pause_active:
                 idx = render_mod.edge_hint_hit_test(
-                    self.board, (cx, cy), self.hex_size, self.font, e.pos
+                    self.board, (cx, cy), self.hex_size, e.pos
                 )
                 if idx is not None:
                     ent = self.board.edge_hints[idx]
@@ -1087,84 +1162,101 @@ class GameplayScene(Scene):
                         ent["helper_on"] = False
                     return  # 숫자를 눌렀으면 보드에는 클릭 전달 안 함
 
-            # 4) 평소 입력: 픽셀→육각 좌표 변환 후 Board API 호출
-            mx, my = pygame.mouse.get_pos()
-            lx, ly = mx - cx, my - cy
-            q, r = pixel_to_axial(lx, ly, self.hex_size)
-            if (q, r) in self.board.tiles:
-                # 애니메이션 판정을 위해 클릭 전 상태 저장
-                t_before = self.board.tiles.get((q, r))
-                prev_state = t_before.state if t_before is not None else None
-                prev_is_mine = t_before.is_mine if t_before is not None else False
+            # 4) 보드 타일 클릭 처리
+            if not self.modal_active and not self.pause_active:
+                mx, my = pygame.mouse.get_pos()
+                lx, ly = mx - cx, my - cy
+                q, r = pixel_to_axial(lx, ly, self.hex_size)
+                if (q, r) in self.board.tiles:
+                    # 사운드 판별을 위해 이전 상태 저장
+                    old_mistakes = self.board.mistakes
+                    old_revealed = getattr(self.board, "revealed_count", 0)
+                    old_flags    = getattr(self.board, "flag_count", 0)
 
-                # 사운드 판별을 위해 이전 상태 저장
-                old_mistakes = self.board.mistakes
-                old_revealed = getattr(self.board, "revealed_count", 0)
-                old_flags    = getattr(self.board, "flag_count", 0)
+                    # 애니메이션 판정을 위해 클릭 전 상태 저장
+                    t_before = self.board.tiles.get((q, r))
+                    prev_state = t_before.state if t_before is not None else None
+                    prev_is_mine = t_before.is_mine if t_before is not None else False
 
-                if e.button == 1:
-                    self.board.reveal(q, r)
-                elif e.button == 3:
-                    self.board.toggle_flag(q, r)
+                    if e.button == 1:
+                        self.board.reveal(q, r)
+                    elif e.button == 3:
+                        self.board.toggle_flag(q, r)
 
-                # 실수 증가 여부 체크
-                if self.board.mistakes > old_mistakes:
-                    # 잘못 클릭 (실수 증가)
-                    if hasattr(self.game, "play_tile_click"):
-                        self.game.play_tile_click(ok=False)
-
-                    # 🔹 실수 애니메이션 추가 (지금 클릭한 타일 좌표 기준)
-                    self.mistake_anims.append(
-                        TileShakeAnim(
-                            q, r,
-                            duration=self.mistake_anim_duration,
-                            amplitude=self.mistake_anim_amplitude,
-                        )
-                    )
-                else:
-                    # 실수는 아니지만, 실제로 뭔가 상태가 바뀐 경우에만 "옳은 클릭"으로 취급
-                    new_revealed = getattr(self.board, "revealed_count", 0)
-                    new_flags    = getattr(self.board, "flag_count", 0)
-                    if (new_revealed > old_revealed) or (new_flags != old_flags):
+                    # 실수 증가 여부 체크
+                    if self.board.mistakes > old_mistakes:
                         if hasattr(self.game, "play_tile_click"):
-                            self.game.play_tile_click(ok=True)
+                            self.game.play_tile_click(ok=False)
 
-                # 리빌 애니메이션 생성: 이번 클릭으로 실제로 새로 열린 안전 칸들
-                t_after = self.board.tiles.get((q, r))
-                if (
-                    e.button == 1
-                    and t_after is not None
-                    and not prev_is_mine
-                    and prev_state != C_REVEALED
-                    and t_after.state == C_REVEALED
-                    and self.board.mistakes == old_mistakes
-                ):
-                    # 1) 클릭한 칸(항상 delay=0으로 가장 먼저)
-                    self.reveal_anims.append(
-                        TileRevealAnim(
-                            q, r,
-                            duration=self.reveal_anim_duration,
-                            delay=0.0,
-                        )
-                    )
-
-                    # 2) flood-fill로 추가로 열린 칸들(있다면) – 순서대로 약간씩 늦게
-                    chain = getattr(self.board, "last_flood_open", []) or []
-                    base_delay = self.reveal_anim_wave_delay
-
-                    for i, (fq, fr) in enumerate(chain, start=1):
-                        self.reveal_anims.append(
-                            TileRevealAnim(
-                                fq, fr,
-                                duration=self.reveal_anim_duration,
-                                delay=base_delay * i,   # i=1부터 시작 → 클릭 칸 이후 순서대로
+                        # 🔹 실수한 타일에 흔들림 애니메이션 추가
+                        if hasattr(self, "mistake_anims"):
+                            self.mistake_anims.append(
+                                TileShakeAnim(
+                                    q, r,
+                                    duration=self.mistake_anim_duration,
+                                    amplitude=self.mistake_anim_amplitude,
+                                )
                             )
+
+                    else:
+                        new_revealed = getattr(self.board, "revealed_count", 0)
+                        new_flags    = getattr(self.board, "flag_count", 0)
+                        if (new_revealed > old_revealed) or (new_flags != old_flags):
+                            if hasattr(self.game, "play_tile_click"):
+                                self.game.play_tile_click(ok=True)
+
+                    # 리빌 애니메이션 생성
+                    t_after = self.board.tiles.get((q, r))
+                    if (
+                        e.button == 1
+                        and t_after is not None
+                        and not prev_is_mine
+                        and prev_state != C_REVEALED
+                        and t_after.state == C_REVEALED
+                        and self.board.mistakes == old_mistakes
+                    ):
+                        self.reveal_anims.append(
+                            TileRevealAnim(q, r, duration=self.reveal_anim_duration)
                         )
 
+        # ----- 마우스 호버 처리 -----
+        if e.type == pygame.MOUSEMOTION:
+            # 튜토리얼 / 모달 / 일시정지 중에는 호버 꺼두기
+            if self.tutorial_active or self.modal_active or self.pause_active:
+                self.hover_anim = None
+                self.hover_tile = None
+                return
+
+            w, h = self.game.WIDTH, self.game.HEIGHT
+            cx, cy = w // 2, h // 2
+            mx, my = e.pos
+            lx, ly = mx - cx, my - cy
+
+            q, r = pixel_to_axial(lx, ly, self.hex_size)
+            t = self.board.tiles.get((q, r))
+
+            # 보드 밖이거나, BLOCKED / REVEALED 타일이면 호버 없음
+            if t is None or t.state in (C_BLOCKED, C_REVEALED):
+                if self.hover_tile is not None:
+                    self.hover_tile = None
+                    self.hover_anim = None
+                return
+
+            # 여기서부터는 "reveal되지 않은 타일" (C_COVERED, C_FLAGGED 등)
+            # → 타일 밖으로 나갔다가 다시 들어올 때마다 새로 애니/사운드
+            if self.hover_tile != (q, r):
+                self.hover_tile = (q, r)
+                self.hover_anim = TileHoverAnim(q, r)
+
+                if hasattr(self.game, "play_tile_hover"):
+                    self.game.play_tile_hover()
 
 
     # ----- 프레임 -----
     def update(self, dt):
+        if hasattr(self, "bg"):
+            self.bg.update(dt)
+
         # 클리어 모달 처리
         if self.board.is_game_over and self.board.is_win:
             # 아직 클리어 모달이 안 켜졌다면, 이번이 첫 클리어 프레임
@@ -1189,8 +1281,19 @@ class GameplayScene(Scene):
                     alive.append(anim)
             self.mistake_anims = alive
 
+        if self.hover_anim is not None:
+            self.hover_anim.update(dt)
+
+
     def draw(self, screen):
-        screen.fill((16, 20, 32))
+        # 배경 그리기
+        size = screen.get_size()
+        if hasattr(self, "bg"):
+            if self.bg.size != size:
+                self.bg.resize(size)
+            self.bg.draw(screen)
+        else:
+            screen.fill((0, 0, 0))
 
         # 현재 화면 크기 기준 중앙 좌표
         w, h = screen.get_size()
@@ -1199,6 +1302,9 @@ class GameplayScene(Scene):
         render_mod.draw_board(screen, self.board, center, self.hex_size, self.font)
         render_mod.draw_edge_hints(screen, self.board, center, self.hex_size, self.font)
         render_mod.draw_topright_info(screen, self.board, self.font)
+
+        if self.hover_anim is not None and self.hover_tile is not None:
+            draw_hover_anim(screen, self.hover_anim, center, self.hex_size)
 
         draw_reveal_anims(screen, self.reveal_anims, center, self.hex_size)
         draw_shake_anims(screen, self.mistake_anims, center, self.hex_size)

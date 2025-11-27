@@ -138,7 +138,7 @@ def main(stage_path=None):
                     continue  # 모달 중에는 아래 보드 입력 막음
 
                 # (새로 추가) 테두리 숫자 클릭 처리
-                idx = edge_hint_hit_test(board, BOARD_CENTER, hex_size, font, event.pos)
+                idx = edge_hint_hit_test(board, BOARD_CENTER, hex_size, event.pos)
                 if idx is not None:
                     ent = board.edge_hints[idx]
                     if event.button == 1:

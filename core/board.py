@@ -20,7 +20,6 @@ class Board:
         self.tiles = {pos: Tile() for pos in grid.cells}
 
         # 게임 상태
-        self.first_click_done = False
         self.is_game_over = False
         self.is_win = False
         self.mistakes = 0
@@ -63,14 +62,10 @@ class Board:
         apply("hint_tight", "tight")
         apply("hint_loose", "loose")
         apply("hint_unknown", "unknown")
-        apply("hint_tight",   "tight")
-        apply("hint_loose",   "loose")
-        apply("hint_unknown", "unknown")
 
         self.build_edge_hints(stage_data)
         self.recompute_counters()
         self.check_win_and_update()
-        self.special = stage_data.get("special", {})
         self.last_flood_open = []
 
     def line_cells(self, q, r, dir_idx):
@@ -84,12 +79,6 @@ class Board:
             path.append((cq, cr))
             cq += dq; cr += dr
         return path
-
-    def contiguous(self, idx_list):
-        """지뢰 인덱스가 연속인지(모두 붙어 있는지)."""
-        if not idx_list:
-            return True
-        return (max(idx_list) - min(idx_list) + 1) == len(idx_list)
     
     def build_edge_hints(self, st):
         self.edge_hints = []
@@ -250,18 +239,6 @@ class Board:
                     q.append(nb)
 
         return opened
-
-
-    def reset_reveals_and_flags(self):
-        self.first_click_done = False
-        self.is_game_over = False
-        self.is_win = False
-        self.mistakes = 0
-        self.locked_flags.clear()
-        for t in self.tiles.values():
-            if t.state != C_BLOCKED:
-                t.state = C_COVERED
-        self.recompute_counters()
 
     def all_safe_revealed(self) -> bool:
         for t in self.tiles.values():
