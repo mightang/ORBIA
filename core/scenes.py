@@ -1,16 +1,17 @@
 # core/scenes.py
-import os, json, re
+import os, json, re, math
 import pygame
 from core.ui import Button, draw_label_center, Slider
 from core import render as render_mod
 from core.board import Board
-from core.grid import HexGrid
-from core.hexmath import pixel_to_axial
-from settings import HEX_SIZE, WIDTH, HEIGHT
+from core.grid import HexGrid, cube_len
+from core.hexmath import pixel_to_axial, hex_corners, axial_to_pixel
+from settings import COL_FLAG_TILE, COL_COVERED, HEX_SIZE
 
 from animations.title_space import TitleBackground
 
 TOTAL_STAGES = 37
+MAJOR_STEP_LAST_INDICES = {1, 7, 19, 37}
 
 def stage_index_to_relpath(idx: int) -> str:
     num = int(idx)
@@ -35,6 +36,24 @@ def path_to_stage_index(path: str):
     """
     m = re.search(r"(\d+)\.json$", path)
     return int(m.group(1)) if m else None
+
+def stage_difficulty_index(idx: int) -> int:
+    """
+    0: 튜토리얼(1번)
+    1: basic (2~7)
+    2: intermediate (8~19)
+    3: advance (20~37)
+    """
+    num = int(idx)
+    if num == 1:
+        return 0
+    elif 2 <= num <= 7:
+        return 1
+    elif 8 <= num <= 19:
+        return 2
+    else:
+        return 3
+
 
 # 공통 Scene 인터페이스
 class Scene:
@@ -133,7 +152,14 @@ class TitleScene(Scene):
         self.quit_btn.rect.update(sub_x, sub_block_top + 2 * (sub_h + sub_gap), sub_w, sub_h)
 
     def go_level_select(self):
-        self.game.change_scene(LevelSelectScene(self.game))
+        # 아직 튜토리얼(1번 스테이지)만 열린 상태라면 → 바로 1번 스테이지 진입
+        if getattr(self.game, "max_unlocked_stage", 1) <= 1:
+            stage_path = stage_index_to_relpath(1)
+            self.game.change_scene(GameplayScene(self.game, stage_path))
+        else:
+            # 튜토리얼을 한 번이라도 깨서 2번 이상 열려 있으면 → 레벨 선택 화면
+            self.game.change_scene(LevelSelectScene(self.game))
+
 
     def go_options(self):
         self.game.change_scene(OptionsScene(self.game))
@@ -461,16 +487,24 @@ class CreditsScene(Scene):
         self.back_btn.draw(screen)
     
 
-# 2) 레벨 선택 (1~37)
+# 2) 레벨 선택 (1~37) – 정면에서 본 정육각형 37칸
 class LevelSelectScene(Scene):
     def __init__(self, game, total=37):
         super().__init__(game)
         self.total = total
         self.title_font = self.game.load_font(36)
         self.ui_font = self.game.load_font(20)
+
+        # 진행도: 1 ~ max_unlocked_stage-1 = 클리어, max_unlocked_stage = 현재까지 열린 최고 단계
         self.max_unlocked = getattr(self.game, "max_unlocked_stage", 1)
-        self.buttons = self.build_buttons()
-        self.last_size = None   # 🔹 추가
+
+        # 배경 (타이틀과 같은 우주 배경 재사용)
+        W, H = self.game.WIDTH, self.game.HEIGHT
+        self.bg = TitleBackground((W, H), show_hex=False)
+
+        # 37칸 hex-grid 기반 스테이지 타일 정보
+        self.stage_tiles = []   # 각 타일: {"idx", "poly", "center", "cleared", "locked", "ring"}
+        self.last_size = None
 
         # 뒤로가기 버튼
         btn_w, btn_h = 100, 40
@@ -481,41 +515,109 @@ class LevelSelectScene(Scene):
             font=self.ui_font,
             on_click=self.go_title
         )
+
+        # 최초 레이아웃
+        self.build_layout(W, H)
+
         if hasattr(self.game, "play_bgm"):
             self.game.play_bgm("main")
 
-    def build_buttons(self):
-        W, H = self.game.WIDTH, self.game.HEIGHT
-        cols = 10
-        gap = 12
-        btn_w, btn_h = 64, 40
-        grid_w = cols*btn_w + (cols-1)*gap
-        start_x = (W - grid_w)//2
-        start_y = int(H*0.25)
 
-        btns = []
-        for i in range(1, self.total+1):
-            row = (i-1)//cols
-            col = (i-1)%cols
-            x = start_x + col*(btn_w+gap)
-            y = start_y + row*(btn_h+gap)
-            label = f"{i:02d}"
+    # --- 헥사 타일 내부 폴리곤 (안쪽 보호막/판) ---
+    def _inner_poly(self, center, poly, scale=0.80):
+        cx, cy = center
+        inner = []
+        for (x, y) in poly:
+            ix = cx + (x - cx) * scale
+            iy = cy + (y - cy) * scale
+            inner.append((ix, iy))
+        return inner
 
-            locked = (i > self.max_unlocked)
+    # --- 포인트가 볼록 다각형(육각형) 안에 있는지 ---
+    def _point_in_poly(self, x, y, poly):
+        inside = False
+        n = len(poly)
+        for i in range(n):
+            x1, y1 = poly[i]
+            x2, y2 = poly[(i + 1) % n]
+            if ((y1 > y) != (y2 > y)):
+                t = (y - y1) / (y2 - y1 + 1e-9)
+                x_cross = x1 + t * (x2 - x1)
+                if x < x_cross:
+                    inside = not inside
+        return inside
 
-            def make_cb(idx=i):
-                def _cb():
-                    self.start_level(idx)
-                return _cb
-            on_click = None if locked else make_cb()
+    # --- 37칸 정육각형 그리드 레이아웃 구성 ---
+    def build_layout(self, W, H):
+        self.stage_tiles.clear()
+        self.last_size = (W, H)
 
-            b = Button((x, y, btn_w, btn_h), label, self.ui_font, on_click)
-            b.locked = locked
-            btns.append(b)
-        return btns
+        cx = W // 2
+        cy = H // 2 + 20  # 화면 중앙보다 아주 약간 아래
 
-    def start_level(self, idx):
-        # 번호 → 폴더 포함 상대 경로로 변환
+        # 화면 크기에 따라 타일 크기 (조금 크게)
+        base_size = min(W, H) * 0.055
+        tile_size = max(24, min(44, int(base_size)))  # 너무 작거나 너무 크지 않게
+
+        # 링 간격 보정 계수 (0이면 딱 붙는 정육각형, 값이 클수록 링 사이가 넓어짐)
+        ring_gap_scale = 0.10
+
+        # radius = 3 인 정육각형 그리드 생성 (총 37칸)
+        grid = HexGrid(3)
+        cells = list(grid.cells)
+
+        # 셀을 "ring(0~3) → 각도" 순으로 정렬해서
+        # 1(센터) → 2~7 → 8~19 → 20~37 순으로 스테이지 번호를 부여한다.
+        def sort_key(pos):
+            q, r = pos
+            ring = cube_len(q, r)  # 0(중앙), 1, 2, 3
+            if ring == 0:
+                angle = -math.pi / 2  # 중앙은 그냥 고정
+            else:
+                x, y = axial_to_pixel(q, r, 1.0)  # 방향만 필요하므로 size=1.0
+                angle = math.atan2(y, x)
+            return (ring, angle)
+
+        cells.sort(key=sort_key)
+
+        for idx, (q, r) in enumerate(cells, start=1):
+            ring = cube_len(q, r)
+
+            # axial → pixel (정면에서 본 평면 육각)
+            px, py = axial_to_pixel(q, r, tile_size)
+
+            # 링 번호에 따라 조금씩 바깥으로 더 밀어내서 링 간격을 띄운다
+            # ring 0 → factor=1.0, ring 1 → 1+ring_gap_scale, ring 2 → 1+2*..., ...
+            factor = 1.0 + ring_gap_scale * ring
+            px *= factor
+            py *= factor
+
+            x = cx + px
+            y = cy + py
+
+            poly = hex_corners((x, y), tile_size - 2)
+
+            # 상태 플래그
+            is_unlocked = (idx <= self.max_unlocked)
+            is_cleared = (idx < self.max_unlocked)
+            locked = not is_unlocked
+
+            self.stage_tiles.append({
+                "idx": idx,
+                "center": (x, y),
+                "poly": poly,
+                "ring": ring,
+                "cleared": is_cleared,
+                "locked": locked,
+            })
+
+        # 뒤로가기 버튼은 화면 좌상단 고정
+        back_w, back_h = 100, 40
+        pad = 20
+        self.back_btn.rect.update(pad, pad, back_w, back_h)
+
+    # --- 스테이지 시작 ---
+    def start_level(self, idx: int):
         rel = stage_index_to_relpath(idx)  # "stages/basic/003.json" 같은 문자열
         path = os.path.join(self.game.BASE_DIR, rel)
 
@@ -528,58 +630,125 @@ class LevelSelectScene(Scene):
     def go_title(self):
         self.game.change_scene(TitleScene(self.game))
 
+    # --- 입력 처리 ---
     def handle_event(self, e):
-        self.back_btn.handle_event(e)     # ← 추가
-        for b in self.buttons:
-            b.handle_event(e)
+        # 뒤로가기 버튼부터
+        self.back_btn.handle_event(e)
+
+        if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
+            mx, my = e.pos
+            for tile in self.stage_tiles:
+                if tile["locked"]:
+                    continue
+                if self._point_in_poly(mx, my, tile["poly"]):
+                    self.start_level(tile["idx"])
+                    break
+
+    def update(self, dt):
+        # 우주 배경 애니메이션 업데이트
+        if hasattr(self, "bg"):
+            self.bg.update(dt)
+
 
     def draw(self, screen):
         size = screen.get_size()
         if size != self.last_size:
-            self.relayout(size)
+            self.build_layout(*size)
 
         W, H = size
-        screen.fill((18,22,36))
-        draw_label_center(
-            screen, "레벨 선택", self.title_font,
-            (W // 2, int(H * 0.14))
-        )
+        # 우주 배경 그리기
+        if hasattr(self, "bg"):
+            self.bg.draw(screen)
+        else:
+            screen.fill((12, 16, 26))
 
-        for b in self.buttons:
-            if getattr(b, "locked", False):
-                b.bg = (30, 30, 40)
-                b.fg = (120, 120, 140)
+        # 진행도 기준
+        max_u = self.max_unlocked
+        current_diff = stage_difficulty_index(max_u)
+
+        # 스테이지 육각 타일들
+        for tile in self.stage_tiles:
+            poly   = tile["poly"]
+            cx, cy = tile["center"]
+            idx    = tile["idx"]
+
+            diff = stage_difficulty_index(idx)
+
+            is_unlocked = (idx <= max_u)
+            is_cleared  = (idx < max_u)      # 이미 클리어한 스테이지
+            is_current  = (idx == max_u)     # 지금 막 도전 중인 스테이지
+
+            # ---- 색상 팔레트 (파랑-회색 계열, 인게임과는 다른 디자인) ----
+            if is_cleared:
+                # 클리어: 푸른 보호막 느낌
+                outer = (40, 70, 115)
+                inner = (90, 155, 210)
+                border = (190, 225, 255)
+                text_color = (238, 246, 255)
+
+            elif is_current:
+                # 현재 도전 중인 스테이지
+                outer = (60, 85, 135)
+                inner = (100, 145, 195)
+                border = (210, 235, 255)
+                text_color = (240, 245, 255)
+
+            elif (not is_unlocked) and diff == current_diff:
+                # 현재 난이도 구간 안의 잠긴 칸 (예: basic 3 도전 중이면 basic 4~6)
+                outer = (62, 68, 80)
+                inner = (76, 82, 96)
+                border = (110, 120, 142)
+                text_color = (180, 188, 205)
+
+            elif (not is_unlocked) and diff > current_diff:
+                # 다음 난이도들 (아직 먼 구간): 더 어두운 회색
+                outer = (28, 30, 38)
+                inner = (20, 22, 30)
+                border = (60, 66, 84)
+                text_color = (120, 124, 140)
+
             else:
-                b.bg = (40, 46, 60)
-                b.fg = (234, 242, 255)
-            b.draw(screen)
+                # 그 외 (열려 있지만 아직 클리어 안 한 이전 난이도 등)
+                outer = (72, 78, 92)
+                inner = (88, 96, 112)
+                border = (130, 142, 168)
+                text_color = (225, 232, 245)
 
+            # ---- 부드러운 halo 반지름 계산 (기존 poly로부터 추정) ----
+            r_est = max(((vx - cx) ** 2 + (vy - cy) ** 2) ** 0.5 for (vx, vy) in poly)
+            halo_poly = hex_corners((cx, cy), r_est + 4)
+
+            halo_surf = pygame.Surface(screen.get_size(), pygame.SRCALPHA)
+            pygame.draw.polygon(halo_surf, (*outer, 40), halo_poly)
+            screen.blit(halo_surf, (0, 0))
+
+            # ---- 메인 육각형(outer + inner + border) ----
+            pygame.draw.polygon(screen, outer, poly)
+
+            inner_poly = self._inner_poly((cx, cy), poly, scale=0.80)
+            pygame.draw.polygon(screen, inner, inner_poly)
+
+            pygame.draw.polygon(screen, border, poly, width=2)
+
+            # ---- 위쪽 하이라이트 ----
+            hi_surf = pygame.Surface(screen.get_size(), pygame.SRCALPHA)
+            top_two = sorted(poly, key=lambda p: p[1])[:2]
+            pygame.draw.line(
+                hi_surf,
+                (255, 255, 255, 35),
+                top_two[0],
+                top_two[1],
+                width=2,
+            )
+            screen.blit(hi_surf, (0, 0))
+
+            # ---- 스테이지 번호 ----
+            label = f"{idx:02d}"
+            txt = self.ui_font.render(label, True, text_color)
+            screen.blit(txt, txt.get_rect(center=(cx, cy)))
+
+        # 뒤로가기 버튼
         self.back_btn.draw(screen)
-
-
-    def relayout(self, size):
-        """현재 화면 크기(size)에 맞춰 레벨 버튼 그리드를 중앙에 재배치."""
-        W, H = size
-        self.last_size = size
-
-        cols = 10
-        gap = 12
-        btn_w, btn_h = 64, 40
-        grid_w = cols * btn_w + (cols - 1) * gap
-        start_x = (W - grid_w) // 2
-        start_y = int(H * 0.25)
-
-        for idx, b in enumerate(self.buttons):
-            row = idx // cols
-            col = idx % cols
-            x = start_x + col * (btn_w + gap)
-            y = start_y + row * (btn_h + gap)
-            b.rect.update(x, y, btn_w, btn_h)
-
-        # 뒤로가기 버튼은 항상 왼쪽 위 여백 기준
-        back_w, back_h = 100, 40
-        pad = 20
-        self.back_btn.rect.update(pad, pad, back_w, back_h)
 
 
 # 3) 게임 플레이 래퍼: 기존 보드/렌더 사용
@@ -591,6 +760,20 @@ class GameplayScene(Scene):
 
         self.board, self.stage, self.hex_size = self.reload_board(stage_path)
         self.stage_label = self.stage_label_from(self.stage, stage_path)
+        self.stage_index = path_to_stage_index(stage_path)
+
+        # --- 튜토리얼 관련 상태 ---
+        idx = path_to_stage_index(stage_path)
+        self.is_tutorial_stage = (idx == 1)
+        self.tutorial_active = False
+        self.tutorial_pages = []
+        self.tutorial_index = 0
+        self.tutorial_btn_rects = {}
+
+        if self.is_tutorial_stage and getattr(self.game, "max_unlocked_stage", 1) <= 1:
+            self.load_tutorial_images()
+            if self.tutorial_pages:
+                self.tutorial_active = True
 
         # 클리어 모달
         self.modal_active = False
@@ -681,9 +864,131 @@ class GameplayScene(Scene):
         if idx is not None and hasattr(self.game, "unlock_stage"):
             self.game.unlock_stage(idx, TOTAL_STAGES)
 
+    def load_tutorial_images(self):
+        """assets/images/tutorial/tuto_01~04.png 로부터 튜토리얼 이미지 로드."""
+        base = os.path.join(self.game.ASSET_DIR, "images", "tutorial")
+        pages = []
+        for i in range(1, 5):
+            fname = f"tuto_{i:02d}.png"
+            fpath = os.path.join(base, fname)
+            if os.path.exists(fpath):
+                img = pygame.image.load(fpath).convert_alpha()
+                pages.append(img)
+        self.tutorial_pages = pages
+        self.tutorial_index = 0
+        self.tutorial_btn_rects = {}
+
+    def draw_tutorial_modal(self, screen):
+        """튜토리얼 페이지를 화면 중앙에 띄우고, 버튼 rect들을 반환."""
+        w, h = screen.get_size()
+        btn_rects = {}
+
+        # 어두운 오버레이
+        overlay = pygame.Surface((w, h), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 180))
+        screen.blit(overlay, (0, 0))
+
+        if not self.tutorial_pages:
+            return btn_rects
+
+        panel_w = int(w * 0.75)
+        panel_h = int(h * 0.75)
+        panel_rect = pygame.Rect(0, 0, panel_w, panel_h)
+        panel_rect.center = (w // 2, h // 2)
+
+        pygame.draw.rect(screen, (20, 26, 46), panel_rect, border_radius=18)
+        pygame.draw.rect(screen, (110, 130, 190), panel_rect, width=2, border_radius=18)
+
+        # 현재 페이지 이미지
+        img = self.tutorial_pages[self.tutorial_index]
+        iw, ih = img.get_size()
+        max_iw = panel_w - 60
+        max_ih = panel_h - 140
+        scale = min(max_iw / iw, max_ih / ih, 1.0)
+        if scale < 1.0:
+            img_disp = pygame.transform.smoothscale(img, (int(iw * scale), int(ih * scale)))
+        else:
+            img_disp = img
+        img_rect = img_disp.get_rect(midtop=(panel_rect.centerx, panel_rect.top + 32))
+        screen.blit(img_disp, img_rect)
+
+        # 페이지 표시
+        page_text = f"{self.tutorial_index + 1} / {len(self.tutorial_pages)}"
+        label = self.font.render(page_text, True, (220, 230, 245))
+        label_rect = label.get_rect(midtop=(panel_rect.centerx, img_rect.bottom + 8))
+        screen.blit(label, label_rect)
+
+        # 버튼들 (이전 / 다음 or 시작하기 / 건너뛰기)
+        btn_w, btn_h = 120, 40
+        gap = 24
+        y = panel_rect.bottom - 30 - btn_h
+        center_x = panel_rect.centerx
+
+        # 이전 버튼
+        if self.tutorial_index > 0:
+            prev_rect = pygame.Rect(center_x - btn_w - gap // 2, y, btn_w, btn_h)
+            pygame.draw.rect(screen, (40, 50, 96), prev_rect, border_radius=14)
+            pygame.draw.rect(screen, (120, 140, 210), prev_rect, width=2, border_radius=14)
+            txt = self.font.render("이전", True, (234, 242, 255))
+            screen.blit(txt, txt.get_rect(center=prev_rect.center))
+            btn_rects["prev"] = prev_rect
+
+        # 다음 / 시작하기 버튼
+        next_label = "다음" if self.tutorial_index < len(self.tutorial_pages) - 1 else "시작하기"
+        next_rect = pygame.Rect(center_x + (0 if self.tutorial_index == 0 else gap // 2),
+                                y, btn_w, btn_h)
+        pygame.draw.rect(screen, (70, 92, 160), next_rect, border_radius=14)
+        pygame.draw.rect(screen, (150, 170, 230), next_rect, width=2, border_radius=14)
+        txt = self.font.render(next_label, True, (240, 245, 255))
+        screen.blit(txt, txt.get_rect(center=next_rect.center))
+        btn_rects["next"] = next_rect
+
+        # 우측 상단 건너뛰기 (선택)
+        skip_text = self.font.render("건너뛰기", True, (200, 210, 230))
+        skip_rect = skip_text.get_rect()
+        pad = 18
+        skip_rect.topright = (panel_rect.right - pad, panel_rect.top + pad)
+        screen.blit(skip_text, skip_rect)
+        btn_rects["skip"] = skip_rect
+
+        return btn_rects
+
 
     # ----- 이벤트 -----
     def handle_event(self, e):
+        # 0) 튜토리얼 모달이 켜져 있으면, 다른 입력은 모두 막고 여기서만 처리
+        if self.tutorial_active:
+            if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1 and self.tutorial_btn_rects:
+                mx, my = e.pos
+                if "skip" in self.tutorial_btn_rects and self.tutorial_btn_rects["skip"].collidepoint(mx, my):
+                    self.tutorial_active = False
+                    return
+                if "prev" in self.tutorial_btn_rects and self.tutorial_btn_rects["prev"].collidepoint(mx, my):
+                    if self.tutorial_index > 0:
+                        self.tutorial_index -= 1
+                    return
+                if "next" in self.tutorial_btn_rects and self.tutorial_btn_rects["next"].collidepoint(mx, my):
+                    if self.tutorial_index < len(self.tutorial_pages) - 1:
+                        self.tutorial_index += 1
+                    else:
+                        # 마지막 페이지에서 "시작하기"
+                        self.tutorial_active = False
+                    return
+                
+        if e.type == pygame.KEYDOWN:
+            if e.key in (pygame.K_SPACE, pygame.K_RETURN):
+                if self.tutorial_index < len(self.tutorial_pages) - 1:
+                    self.tutorial_index += 1
+                else:
+                    self.tutorial_active = False
+                return
+            elif e.key == pygame.K_ESCAPE:
+                self.tutorial_active = False
+                return
+
+            # 튜토리얼 중에는 다른 처리 X
+            return                    
+    
         if e.type == pygame.KEYDOWN and e.key == pygame.K_ESCAPE:
             if self.modal_active:
                 return
@@ -700,28 +1005,26 @@ class GameplayScene(Scene):
             if self.modal_active and e.button == 1 and self.modal_btn_rects:
                 mx, my = e.pos
                 if self.modal_btn_rects["retry"].collidepoint(mx, my):
-                    if hasattr(self.game, "play_ui_click"):
-                        self.game.play_ui_click()
+                    # 현재 스테이지 재시도
                     self.board, self.stage, self.hex_size = self.reload_board(self.stage_path)
                     self.stage_label = self.stage_label_from(self.stage, self.stage_path)
                     self.modal_active = False
                     self.modal_btn_rects = {}
                 elif self.modal_btn_rects["menu"].collidepoint(mx, my):
-                    if hasattr(self.game, "play_ui_click"):
-                        self.game.play_ui_click()
+                    # 레벨 선택 화면으로
                     self.game.change_scene(LevelSelectScene(self.game))
-                elif self.modal_btn_rects["next"].collidepoint(mx, my):
-                    if hasattr(self.game, "play_ui_click"):
-                        self.game.play_ui_click()
+                elif "next" in self.modal_btn_rects and self.modal_btn_rects["next"].collidepoint(mx, my):
+                    # 다음 스테이지로 진행 (큰 단계 끝이 아닐 때만 버튼이 존재)
                     nxt = self.next_stage_path(self.stage_path)
                     if os.path.exists(nxt):
                         self.stage_path = nxt
                         self.board, self.stage, self.hex_size = self.reload_board(self.stage_path)
                         self.stage_label = self.stage_label_from(self.stage, self.stage_path)
-                        self.apply_stage_bgm() 
+                        self.stage_index = path_to_stage_index(self.stage_path)
                         self.modal_active = False
                         self.modal_btn_rects = {}
                 return  # 모달 중엔 아래 입력 무시
+
             
             # 2) 일시정지 모달이 활성화된 경우: 일시정지 모달 버튼만 처리
             if self.pause_active and e.button == 1 and self.pause_btn_rects:
@@ -732,9 +1035,11 @@ class GameplayScene(Scene):
                     self.pause_active = False
                     self.pause_btn_rects = {}
                 elif self.pause_btn_rects["level"].collidepoint(mx, my):
-                    if hasattr(self.game, "play_ui_click"):
-                        self.game.play_ui_click()
-                    self.game.change_scene(LevelSelectScene(self.game))
+                    # 튜토리얼 클리어 전에는 레벨 선택 잠금
+                    if getattr(self.game, "max_unlocked_stage", 1) <= 1:
+                        self.game.change_scene(TitleScene(self.game))
+                    else:
+                        self.game.change_scene(LevelSelectScene(self.game))
                 elif self.pause_btn_rects["restart"].collidepoint(mx, my):
                     if hasattr(self.game, "play_ui_click"):
                         self.game.play_ui_click()
@@ -807,12 +1112,30 @@ class GameplayScene(Scene):
 
         self.menu_button.draw(screen)
 
+        if self.tutorial_active:
+            self.tutorial_btn_rects = self.draw_tutorial_modal(screen)
+            return
+    
         if self.pause_active:
+            # 🔹 튜토리얼(1번 스테이지 + 아직 2번이 안 열린 상태)인 경우
+            is_tutorial = (
+                getattr(self.game, "max_unlocked_stage", 1) <= 1
+            )
             self.pause_btn_rects = render_mod.draw_pause_modal(
-                screen, self.stage_label, self.board.mistakes, self.font
+                screen,
+                self.stage_label,
+                self.board.mistakes,
+                self.font,
+                is_tutorial=is_tutorial,
             )
 
         if self.modal_active:
+            # 튜토리얼 / basic / intermediate / advance 마지막 스테이지에서는 다음 스테이지 버튼 숨김
+            show_next = self.stage_index not in MAJOR_STEP_LAST_INDICES
             self.modal_btn_rects = render_mod.draw_success_modal(
-                screen, self.stage_label, self.board.mistakes, self.font
+                screen,
+                self.stage_label,
+                self.board.mistakes,
+                self.font,
+                show_next=show_next,
             )
