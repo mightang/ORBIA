@@ -71,6 +71,7 @@ class Board:
         self.recompute_counters()
         self.check_win_and_update()
         self.special = stage_data.get("special", {})
+        self.last_flood_open = []
 
     def line_cells(self, q, r, dir_idx):
         """pos=(q,r)에서 dir 방향으로 필드 안쪽 끝까지 좌표를 나열."""
@@ -174,6 +175,9 @@ class Board:
         if self.is_game_over:
             return
 
+        # 연쇄 공개 로그 초기화(이번 클릭 기준으로 다시 채움)
+        self.last_flood_open = []
+
         t = self.tiles.get((q, r))
         if not t:
             return
@@ -190,30 +194,34 @@ class Board:
             self.check_win_and_update()
             return
 
-        # 안전칸 공개
+        # 안전칸 공개 (클릭한 칸)
         t.state = C_REVEALED
         self.revealed_count += 1
 
+        opened_chain = []
         # 숫자 0이면 연쇄 공개
         if t.number == 0:
-            self.flood_fill_open((q, r))
+            opened_chain = self.flood_fill_open((q, r))
+
+        # 이번 클릭으로 flood-fill로 추가로 열린 칸들 기록
+        self.last_flood_open = opened_chain
 
         # 승리 조건 갱신
         self.check_win_and_update()
 
-
     def flood_fill_open(self, start_pos):
         if start_pos not in self.tiles:
-            return
+            return []
         start = self.tiles[start_pos]
         if start.is_mine or start.state == C_BLOCKED:
-            return
+            return []
         # 시작점이 0이 아니면 연쇄 공개 불필요
         if start.number != 0:
-            return
+            return []
 
         q = deque([start_pos])
         seen = {start_pos}
+        opened = []  # ← 이번 flood-fill로 새로 열린 칸들을 순서대로 기록
 
         while q:
             cq, cr = q.popleft()
@@ -221,7 +229,7 @@ class Board:
                 t = self.tiles.get(nb)
                 if not t:
                     continue
-                # 연쇄 공개 중에도 다음 규칙을 지킵니다
+                # 연쇄 공개 중에도 다음 규칙을 지킴
                 if t.state == C_BLOCKED:
                     continue
                 if t.state == C_FLAGGED:
@@ -229,16 +237,20 @@ class Board:
                 if t.is_mine:
                     continue
 
-                # 새로 여는 경우에만 카운트
+                # 새로 여는 경우에만 카운트 + 리스트에 기록
                 if t.state != C_REVEALED:
                     t.state = C_REVEALED
                     # 안전칸만 카운팅
                     self.revealed_count += 1
+                    opened.append(nb)
 
                 # 0이면 큐에 추가(더 확장)
                 if t.number == 0 and nb not in seen:
                     seen.add(nb)
                     q.append(nb)
+
+        return opened
+
 
     def reset_reveals_and_flags(self):
         self.first_click_done = False

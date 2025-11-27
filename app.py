@@ -133,7 +133,6 @@ class App:
         self.max_unlocked_stage = 1
         self.save_progress()
 
-
     def change_scene(self, scene_obj):
         self.current_scene = scene_obj
 

@@ -3,12 +3,15 @@ import os, json, re, math
 import pygame
 from core.ui import Button, draw_label_center, Slider
 from core import render as render_mod
-from core.board import Board
+from core.board import Board, C_REVEALED
 from core.grid import HexGrid, cube_len
 from core.hexmath import pixel_to_axial, hex_corners, axial_to_pixel
 from settings import COL_FLAG_TILE, COL_COVERED, HEX_SIZE
 
 from animations.title_space import TitleBackground
+from animations.tile_reveal import TileRevealAnim, draw_reveal_anims
+from animations.tile_mistake import TileShakeAnim, draw_shake_anims
+
 
 TOTAL_STAGES = 37
 MAJOR_STEP_LAST_INDICES = {1, 7, 19, 37}
@@ -791,6 +794,10 @@ class GameplayScene(Scene):
             on_click=self.open_pause_modal
         )
         self.apply_stage_bgm()
+
+        self.reveal_anims = []
+        self.reveal_anim_duration = 0.15  # 초 단위
+        self.reveal_anim_wave_delay = 0.04    # flood fill 시 인접 칸 사이 딜레이(초)
         
     # ----- 유틸 -----
     def load_stage(self, path):
@@ -822,6 +829,12 @@ class GameplayScene(Scene):
         if hasattr(self.game, "play_bgm"):
             self.game.play_bgm(key)
 
+        # --- 실수(오류 클릭) 애니메이션 ---
+        self.mistake_anims = []
+        # 한 번 흔들리는 전체 시간(초)
+        self.mistake_anim_duration = 0.25
+        # 흔들림 세기(픽셀) – 기본값은 타일 크기에 비례
+        self.mistake_anim_amplitude = self.hex_size * 0.14
         
     def reload_board(self, path):
         st = self.load_stage(path)
@@ -958,7 +971,12 @@ class GameplayScene(Scene):
     def handle_event(self, e):
         # 0) 튜토리얼 모달이 켜져 있으면, 다른 입력은 모두 막고 여기서만 처리
         if self.tutorial_active:
-            if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1 and self.tutorial_btn_rects:
+            # 마우스 클릭으로 버튼 처리
+            if (
+                e.type == pygame.MOUSEBUTTONDOWN
+                and e.button == 1
+                and self.tutorial_btn_rects
+            ):
                 mx, my = e.pos
                 if "skip" in self.tutorial_btn_rects and self.tutorial_btn_rects["skip"].collidepoint(mx, my):
                     self.tutorial_active = False
@@ -971,24 +989,26 @@ class GameplayScene(Scene):
                     if self.tutorial_index < len(self.tutorial_pages) - 1:
                         self.tutorial_index += 1
                     else:
-                        # 마지막 페이지에서 "시작하기"
                         self.tutorial_active = False
                     return
-                
-        if e.type == pygame.KEYDOWN:
-            if e.key in (pygame.K_SPACE, pygame.K_RETURN):
-                if self.tutorial_index < len(self.tutorial_pages) - 1:
-                    self.tutorial_index += 1
-                else:
-                    self.tutorial_active = False
-                return
-            elif e.key == pygame.K_ESCAPE:
-                self.tutorial_active = False
-                return
 
-            # 튜토리얼 중에는 다른 처리 X
-            return                    
-    
+            # 키보드로 페이지 넘기기 / 종료
+            if e.type == pygame.KEYDOWN:
+                if e.key in (pygame.K_SPACE, pygame.K_RETURN):
+                    if self.tutorial_index < len(self.tutorial_pages) - 1:
+                        self.tutorial_index += 1
+                    else:
+                        self.tutorial_active = False
+                    return
+                elif e.key == pygame.K_ESCAPE:
+                    self.tutorial_active = False
+                    return
+
+            # 튜토리얼 중에는 다른 입력 무시
+            return
+
+        # ▼ 여기부터는 "튜토리얼이 꺼진 상태"에서만 처리
+
         if e.type == pygame.KEYDOWN and e.key == pygame.K_ESCAPE:
             if self.modal_active:
                 return
@@ -1008,6 +1028,10 @@ class GameplayScene(Scene):
                     # 현재 스테이지 재시도
                     self.board, self.stage, self.hex_size = self.reload_board(self.stage_path)
                     self.stage_label = self.stage_label_from(self.stage, self.stage_path)
+                    
+                    self.reveal_anims.clear()
+                    self.mistake_anims.clear()
+
                     self.modal_active = False
                     self.modal_btn_rects = {}
                 elif self.modal_btn_rects["menu"].collidepoint(mx, my):
@@ -1068,6 +1092,11 @@ class GameplayScene(Scene):
             lx, ly = mx - cx, my - cy
             q, r = pixel_to_axial(lx, ly, self.hex_size)
             if (q, r) in self.board.tiles:
+                # 애니메이션 판정을 위해 클릭 전 상태 저장
+                t_before = self.board.tiles.get((q, r))
+                prev_state = t_before.state if t_before is not None else None
+                prev_is_mine = t_before.is_mine if t_before is not None else False
+
                 # 사운드 판별을 위해 이전 상태 저장
                 old_mistakes = self.board.mistakes
                 old_revealed = getattr(self.board, "revealed_count", 0)
@@ -1083,6 +1112,15 @@ class GameplayScene(Scene):
                     # 잘못 클릭 (실수 증가)
                     if hasattr(self.game, "play_tile_click"):
                         self.game.play_tile_click(ok=False)
+
+                    # 🔹 실수 애니메이션 추가 (지금 클릭한 타일 좌표 기준)
+                    self.mistake_anims.append(
+                        TileShakeAnim(
+                            q, r,
+                            duration=self.mistake_anim_duration,
+                            amplitude=self.mistake_anim_amplitude,
+                        )
+                    )
                 else:
                     # 실수는 아니지만, 실제로 뭔가 상태가 바뀐 경우에만 "옳은 클릭"으로 취급
                     new_revealed = getattr(self.board, "revealed_count", 0)
@@ -1091,13 +1129,65 @@ class GameplayScene(Scene):
                         if hasattr(self.game, "play_tile_click"):
                             self.game.play_tile_click(ok=True)
 
+                # 리빌 애니메이션 생성: 이번 클릭으로 실제로 새로 열린 안전 칸들
+                t_after = self.board.tiles.get((q, r))
+                if (
+                    e.button == 1
+                    and t_after is not None
+                    and not prev_is_mine
+                    and prev_state != C_REVEALED
+                    and t_after.state == C_REVEALED
+                    and self.board.mistakes == old_mistakes
+                ):
+                    # 1) 클릭한 칸(항상 delay=0으로 가장 먼저)
+                    self.reveal_anims.append(
+                        TileRevealAnim(
+                            q, r,
+                            duration=self.reveal_anim_duration,
+                            delay=0.0,
+                        )
+                    )
+
+                    # 2) flood-fill로 추가로 열린 칸들(있다면) – 순서대로 약간씩 늦게
+                    chain = getattr(self.board, "last_flood_open", []) or []
+                    base_delay = self.reveal_anim_wave_delay
+
+                    for i, (fq, fr) in enumerate(chain, start=1):
+                        self.reveal_anims.append(
+                            TileRevealAnim(
+                                fq, fr,
+                                duration=self.reveal_anim_duration,
+                                delay=base_delay * i,   # i=1부터 시작 → 클릭 칸 이후 순서대로
+                            )
+                        )
+
+
+
     # ----- 프레임 -----
     def update(self, dt):
+        # 클리어 모달 처리
         if self.board.is_game_over and self.board.is_win:
             # 아직 클리어 모달이 안 켜졌다면, 이번이 첫 클리어 프레임
             if not self.modal_active:
                 self.on_stage_cleared()
             self.modal_active = True
+
+        # 타일 리빌 애니메이션 업데이트
+        if self.reveal_anims:
+            alive = []
+            for anim in self.reveal_anims:
+                anim.update(dt)
+                if not anim.finished:
+                    alive.append(anim)
+            self.reveal_anims = alive
+
+        if self.mistake_anims:
+            alive = []
+            for anim in self.mistake_anims:
+                anim.update(dt)
+                if not anim.finished:
+                    alive.append(anim)
+            self.mistake_anims = alive
 
     def draw(self, screen):
         screen.fill((16, 20, 32))
@@ -1109,6 +1199,9 @@ class GameplayScene(Scene):
         render_mod.draw_board(screen, self.board, center, self.hex_size, self.font)
         render_mod.draw_edge_hints(screen, self.board, center, self.hex_size, self.font)
         render_mod.draw_topright_info(screen, self.board, self.font)
+
+        draw_reveal_anims(screen, self.reveal_anims, center, self.hex_size)
+        draw_shake_anims(screen, self.mistake_anims, center, self.hex_size)
 
         self.menu_button.draw(screen)
 
