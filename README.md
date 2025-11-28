@@ -130,9 +130,15 @@ TERMPROJECT/
 ---
 
 ## 게임 플레이 화면
-[Title](assets/images/README/title.png)
-[Level Select](assets/images/README/gameplay.png)
-[Gameplay](assets/images/README/levelselect.png)
+<p align="center">
+  <img src="assets/images/README/title.png" width="240" style="border-radius: 12px;">
+</p>
+<p align="center">
+  <img src="assets/images/README/gameplay.png" width="240" style="border-radius: 12px;">
+</p>
+<p align="center">
+  <img src="assets/images/README/levelselect.png" width="240" style="border-radius: 12px;">
+</p>
 
 ---
 
