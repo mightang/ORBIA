@@ -123,7 +123,6 @@ TERMPROJECT/
 ├─ stages/              # 001.json ~ 037.json
 │
 ├─ app.py               # 게임 실행 엔트리포인트
-├─ game.py              # 단일 스테이지 테스트용 런처
 └─ settings.py          # 글로벌 설정값
 ~~~
 
