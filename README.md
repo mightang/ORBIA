@@ -157,10 +157,10 @@ TERMPROJECT/
 
 ## 라이선스
 
-[Font]
+**[Font]**<br>
 (https://noonnu.cc/font_page/694)
 
-[배경 음악]
+**[배경 음악]**<br>
 (https://www.youtube.com/watch?v=7OQx3dMjBMQ&list=RDQMVI8r1aHT3yA&index=10)  
 (https://www.youtube.com/watch?v=6RO7K4W-c9g&list=RDQMVI8r1aHT3yA&index=5)  
 (https://www.youtube.com/watch?v=XMn4DA7UxFk&list=RDQMudcOVFF92x0&index=7)  
@@ -168,5 +168,5 @@ TERMPROJECT/
 (https://www.youtube.com/watch?v=EVHet8oqWBo&list=PLuqZTQ_5gsprXxxcIR8KeohOY4lM82m-Q&index=19)  
 (https://www.youtube.com/watch?v=sUXboASMRkc&list=PLuqZTQ_5gsprXxxcIR8KeohOY4lM82m-Q&index=42)
 
-[Click SFX]
+**[Click SFX]**<br>
 (https://mixkit.co/free-sound-effects/)
