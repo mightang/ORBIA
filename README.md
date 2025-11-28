@@ -129,17 +129,10 @@ TERMPROJECT/
 
 ---
 
-## 스크린샷
-
-게임 실행 후 캡처 이미지를 아래 위치에 삽입하세요.
-
-예시:
-
-~~~markdown
-![Title](assets/images/screenshot_title.png)
-![Level Select](assets/images/screenshot_levelselect.png)
-![Gameplay](assets/images/screenshot_gameplay.png)
-~~~
+## 게임 플레이 화면
+[Title](assets/images/README/title.png)
+[Level Select](assets/images/README/gameplay.png)
+[Gameplay](assets/images/README/levelselect.png)
 
 ---
 
