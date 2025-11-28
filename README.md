@@ -157,21 +157,16 @@ TERMPROJECT/
 
 ## 라이선스
 
-본 프로젝트의 코드는 MIT License를 따릅니다.  
-폰트 및 기타 리소스는 개별 라이선스를 따릅니다.
+[Font](https://noonnu.cc/font_page/694)
 
+[배경 음악]  
+[YouTube 링크 1](https://www.youtube.com/watch?v=7OQx3dMjBMQ&list=RDQMVI8r1aHT3yA&index=10)  
+[YouTube 링크 2](https://www.youtube.com/watch?v=6RO7K4W-c9g&list=RDQMVI8r1aHT3yA&index=5)  
+[YouTube 링크 3](https://www.youtube.com/watch?v=XMn4DA7UxFk&list=RDQMudcOVFF92x0&index=7)  
+[YouTube 링크 4](https://www.youtube.com/watch?v=YUE2LoPlBs0&list=PLuqZTQ_5gsprXxxcIR8KeohOY4lM82m-Q&index=13)  
+[YouTube 링크 5](https://www.youtube.com/watch?v=EVHet8oqWBo&list=PLuqZTQ_5gsprXxxcIR8KeohOY4lM82m-Q&index=19)  
+[YouTube 링크 6](https://www.youtube.com/watch?v=sUXboASMRkc&list=PLuqZTQ_5gsprXxxcIR8KeohOY4lM82m-Q&index=42)
+
+
+[Click SFX](https://mixkit.co/free-sound-effects/)
 ---
-
-## 참고
-
-본 게임은 Hexcells (Matthew Brown)로부터 형태적 영감을 받았으나,  
-모든 구현(스테이지 데이터, 렌더링, UI, 시스템 등)은 독자적으로 제작되었습니다.
-
----
-
-## 개발자 메모
-
-본 프로젝트는 1인 개발로 제작되었습니다.  
-전체 시스템 구조, 렌더링, 퍼즐 구성, UI, 스테이지 구성 등  
-전 과정을 Python 기반으로 직접 구현했습니다.
-
