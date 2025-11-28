@@ -13,7 +13,7 @@ class GameHexBackground:
     - 윤곽선 없이 '흐릿하게 채워진' 육각형만 보이게
     """
 
-    def __init__(self, size, num_hex=40):
+    def __init__(self, size, num_hex=5):
         self.size = size  # (w, h)
         self.num_hex = num_hex
         self.hexes = []
@@ -25,47 +25,23 @@ class GameHexBackground:
     def _spawn_hex(self, *, from_bottom=False):
         """새 육각형 하나 생성해서 dict로 돌려줌."""
         w, h = self.size
+        base = min(w, h)
 
-        # 크기/속도/투명도 그룹을 좀 더 세분화 (5단계)
-        band = random.random()
-
-        if band < 0.2:
-            # 1단계: 아주 작은 육각형 (가장 빠름)
-            radius = random.uniform(10, 18)
-            speed = random.uniform(14, 24)   # px/sec
-
-        elif band < 0.4:
-            # 2단계: 작은 육각형
-            radius = random.uniform(18, 28)
-            speed = random.uniform(10, 20)
-
-        elif band < 0.6:
-            # 3단계: 중간 크기
-            radius = random.uniform(28, 42)
-            speed = random.uniform(7, 14)
-
-        elif band < 0.8:
-            # 4단계: 좀 큰 육각형
-            radius = random.uniform(42, 60)
-            speed = random.uniform(5, 10)
-
-        else:
-            # 5단계: 아주 큰 육각형 (가장 느리고 가장 흐릿해질 대상)
-            radius = random.uniform(60, 86)
-            speed = random.uniform(3, 7)
+        # 화면 기준으로 아주 크게: 화면 짧은 변의 40~65% 정도
+        radius = random.uniform(base * 0.40, base * 0.65)
+        speed  = random.uniform(4, 9)   # 너무 안 멈춰 보이지 않을 정도로만 천천히
+        drift  = random.uniform(-5, 5)  # 좌우 살짝만
 
         if from_bottom:
-            y = random.uniform(h, h + h * 0.5)   # 화면 아래에서 새로 등장
+            y = random.uniform(h, h + h * 0.5)
         else:
-            y = random.uniform(0, h)
+            y = random.uniform(-0.2 * h, h * 1.2)  # 살짝 위/아래까지 포함해서 자연스럽게
 
-        x = random.uniform(-0.15 * w, 1.15 * w)
+        x = random.uniform(-0.2 * w, 1.2 * w)
 
-        drift = random.uniform(-6, 6)            # 좌우로 아주 살짝만 흐르게
-
-        # 크기에 따라 투명도도 조금 다르게 (큰 애는 더 연하게)
-        base_alpha = 120 - int(radius * 0.7) + random.randint(-10, 10)
-        alpha = max(30, min(130, base_alpha))
+        # 기본 투명도는 낮게 (나중에 FADE까지 곱해지니 꽤 흐려짐)
+        base_alpha = random.randint(35, 60)
+        alpha = max(10, min(80, base_alpha))
 
         return {
             "x": x,
@@ -134,7 +110,7 @@ class GameHexBackground:
                 local_poly.append((lx, ly))
 
             # 전체 밝기(투명도)를 더 낮추고 싶으면 FADE 조절
-            FADE = 0.4  # 0.4 = 원래보다 40% 정도만 보이게
+            FADE = 0.18
             draw_alpha = max(0, min(255, int(alpha * FADE)))
 
             fill_color = (255, 255, 255, draw_alpha)
