@@ -32,7 +32,6 @@ class App:
         # kind: "window" / "max_window" / "fullscreen"
         self.display_modes = [
             {"name": "창 모드",          "kind": "window"},
-            {"name": "큰 창 모드",       "kind": "max_window"},
             {"name": "전체 화면",        "kind": "fullscreen"},
         ]
         self.display_mode_index = 0   # 기본: 창 모드
@@ -236,19 +235,6 @@ class App:
         if kind == "window":
             # 기본 작은 창
             w, h = base_w, base_h
-
-        elif kind == "max_window":
-            # 화면 안에서 비율 유지하며 최대한 크게
-            margin = 80  # 작업표시줄/타이틀바 고려 여백
-            max_w = max(400, desktop_w - margin)
-            max_h = max(300, desktop_h - margin)
-
-            # 우선 높이에 맞추고, 넘치면 너비에 맞춤
-            h = max_h
-            w = int(h * ratio)
-            if w > max_w:
-                w = max_w
-                h = int(w / ratio)
 
         elif kind == "fullscreen":
             flags = pygame.FULLSCREEN

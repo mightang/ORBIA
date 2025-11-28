@@ -1,5 +1,5 @@
 {
-  "name": "Final-5-BrokenCircle",
+  "name": "Advance-17",
   "hex_size": 16,
   "radius": 6,
 
@@ -26,23 +26,5 @@
     { "pos": [-6, 1], "dir": 0 },
     { "pos": [0, -7], "dir": 5 },
     { "pos": [6, -1], "dir": 3 }
-  ],
-  "edge_hint_tight": [
-    { "pos": [-5, 3], "dir": 0 },
-    { "pos": [2, -6], "dir": 5 }
-  ],
-  "edge_hint_loose": [
-    { "pos": [-3, 4], "dir": 0 },
-    { "pos": [5, -4], "dir": 3 }
-  ],
-
-  "hint_tight": [
-    [-6, -1], [-4, -2], [-2, 2], [2, 1], [4, 2]
-  ],
-  "hint_loose": [
-    [-2, 4], [0, 4], [2, 4], [4, 3]
-  ],
-  "hint_unknown": [
-    [-5, -2], [-3, -3], [3, 0], [5, -1]
   ]
 }

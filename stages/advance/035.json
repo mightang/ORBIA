@@ -1,6 +1,6 @@
 {
-  "name": "Final-4-Islands",
-  "hex_size": 16,
+  "name": "Advance-16",
+  "hex_size": 22,
   "radius": 6,
 
   "blocked": [
@@ -26,23 +26,5 @@
     { "pos": [-6, 0], "dir": 0 },
     { "pos": [0, -6], "dir": 5 },
     { "pos": [6, -3], "dir": 3 }
-  ],
-  "edge_hint_tight": [
-    { "pos": [-5, 2], "dir": 0 },
-    { "pos": [3, -6], "dir": 5 }
-  ],
-  "edge_hint_loose": [
-    { "pos": [-3, 4], "dir": 0 },
-    { "pos": [5, -4], "dir": 3 }
-  ],
-
-  "hint_tight": [
-    [-4, 0], [-2, -3], [2, 3], [4, 0], [5, 0]
-  ],
-  "hint_loose": [
-    [-1, 4], [1, 4], [3, 3], [2, -4]
-  ],
-  "hint_unknown": [
-    [-5, -1], [-5, 1], [6, -2], [6, 2]
   ]
 }

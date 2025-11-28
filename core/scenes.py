@@ -422,7 +422,7 @@ class OptionsScene(Scene):
         # 라벨 텍스트
         bgm_label = self.ui_font.render("배경 음악 볼륨", True, (234,242,255))
         sfx_label = self.ui_font.render("효과음 볼륨", True, (234,242,255))
-        res_label = self.ui_font.render("화면 크기 (해상도)", True, (234,242,255))
+        res_label = self.ui_font.render("화면 모드", True, (234,242,255))
 
         screen.blit(bgm_label, (self.bgm_slider.rect.left,
                                 self.bgm_slider.rect.top - 32))

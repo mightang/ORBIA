@@ -9,6 +9,7 @@ from core.render import (
 from core.hexmath import pixel_to_axial
 from settings import WIDTH, HEIGHT, BOARD_CENTER, COL_BG
 from settings import HEX_SIZE as DEFAULT_HEX
+from core.scenes import TOTAL_STAGES, stage_index_to_relpath, path_to_stage_index
 
 def load_font():
     # 1순위: 동봉 폰트
@@ -34,28 +35,6 @@ def load_font():
     return pygame.font.SysFont(None, 22)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-TOTAL_STAGES = 37
-
-def stage_index_to_relpath(idx: int) -> str:
-    num = int(idx)
-    if num < 1 or num > TOTAL_STAGES:
-        raise ValueError(f"invalid stage index: {idx}")
-
-    if num == 1:
-        subdir = "tutorial"
-    elif 2 <= num <= 7:
-        subdir = "basic"
-    elif 8 <= num <= 19:
-        subdir = "intermediate"
-    else:
-        subdir = "advance"
-
-    return os.path.join("stages", subdir, f"{num:03d}.json")
-
-def path_to_stage_index(path: str):
-    m = re.search(r"(\d+)\.json$", path)
-    return int(m.group(1)) if m else None
-
 
 def load_stage(path):
     with open(path, "r", encoding="utf-8") as f:
@@ -93,7 +72,7 @@ def main(stage_path=None):
 
     if stage_path is None:
         # 디폴트: 001 튜토리얼
-        stage_path = os.path.join(BASE_DIR, stage_index_to_relpath(1))
+        stage_path = os.path.join(BASE_DIR, stage_index_to_relpath(37))
 
     board, st, hex_size= reload_board(stage_path)
     modal_active = False
@@ -173,5 +152,14 @@ def main(stage_path=None):
         clock.tick(60)
 
 if __name__ == "__main__":
-    stage = sys.argv[1] if len(sys.argv) > 1 else None
-    main(stage)
+    arg = sys.argv[1] if len(sys.argv) > 1 else None
+
+    if arg is not None and arg.isdigit():
+        idx = int(arg)
+        rel = stage_index_to_relpath(idx)  # core.scenes 에서 가져온 함수
+        stage_path = os.path.join(BASE_DIR, rel)
+    else:
+        # 이미 경로를 직접 넣은 경우 그대로 사용 (None 포함)
+        stage_path = arg
+
+    main(stage_path)

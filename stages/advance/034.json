@@ -1,6 +1,6 @@
 {
-  "name": "Final-3-BigRect",
-  "hex_size": 16,
+  "name": "Advance-15",
+  "hex_size": 22,
   "radius": 6,
 
   "blocked": [
@@ -24,14 +24,6 @@
     { "pos": [-6, -1], "dir": 0 },
     { "pos": [0, -6], "dir": 5 },
     { "pos": [6, -2], "dir": 3 }
-  ],
-  "edge_hint_tight": [
-    { "pos": [-5, 2], "dir": 0 },
-    { "pos": [3, -6], "dir": 5 }
-  ],
-  "edge_hint_loose": [
-    { "pos": [-4, 4], "dir": 0 },
-    { "pos": [4, -4], "dir": 3 }
   ],
 
   "hint_tight": [
