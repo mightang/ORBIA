@@ -104,26 +104,110 @@ r = 3  → 18 스테이지
 
 ## 프로젝트 구조
 
-~~~text
-TERMPROJECT/
+## 프로젝트 구조
+
+```text
+TermProject/
+├─ app.py
+├─ settings.py
+│
+├─ animations/
+│  ├─ init.py
+│  ├─ game_hex_bg.py
+│  ├─ scene_transition.py
+│  ├─ stage_star_glow.py
+│  ├─ tile_hover.py
+│  ├─ tile_mistake.py
+│  ├─ tile_reveal.py
+│  └─ title_space.py
+│
 ├─ assets/
 │  ├─ fonts/
-│  │   └─ PretendardVariable.ttf
-│  └─ images/
-│      └─ orbia_icon.png
+│  │  └─ PretendardVariable.ttf
+│  │
+│  ├─ images/
+│  │  ├─ game_title.png
+│  │  ├─ orbia_icon.png
+│  │  │
+│  │  ├─ README/
+│  │  │  ├─ gameplay.png
+│  │  │  ├─ levelselect.png
+│  │  │  └─ title.png
+│  │  │
+│  │  └─ tutorial/
+│  │     ├─ tuto_01.png
+│  │     ├─ tuto_02.png
+│  │     ├─ tuto_03.png
+│  │     └─ tuto_04.png
+│  │
+│  └─ sounds/
+│     ├─ advance_1.ogg
+│     ├─ advance_2.ogg
+│     ├─ advance_3.ogg
+│     ├─ basic.ogg
+│     ├─ intermediate_1.ogg
+│     ├─ intermediate_2.ogg
+│     ├─ main.ogg
+│     ├─ tile_click_correct.wav
+│     ├─ tile_click_false.wav
+│     ├─ tile_hover.wav
+│     └─ ui_click.wav
 │
 ├─ core/
-│  ├─ board.py          # 게임 규칙/보드 상태
-│  ├─ grid.py           # 육각 격자 생성
-│  ├─ hexmath.py        # 좌표 변환/육각 수학
-│  ├─ render.py         # 렌더링 담당
-│  ├─ ui.py             # 버튼·텍스트 유틸리티
-│  └─ scenes.py         # Title / LevelSelect / Gameplay
+│  ├─ board.py
+│  ├─ grid.py
+│  ├─ hexmath.py
+│  ├─ render.py
+│  ├─ scenes.py
+│  └─ ui.py
 │
-├─ stages/              # 001.json ~ 037.json
+├─ saves/
 │
-├─ app.py               # 게임 실행 엔트리포인트
-└─ settings.py          # 글로벌 설정값
+└─ stages/
+   ├─ tutorial/
+   │  └─ 001.json
+   │
+   ├─ basic/
+   │  ├─ 002.json
+   │  ├─ 003.json
+   │  ├─ 004.json
+   │  ├─ 005.json
+   │  ├─ 006.json
+   │  └─ 007.json
+   │
+   ├─ intermediate/
+   │  ├─ 008.json
+   │  ├─ 009.json
+   │  ├─ 010.json
+   │  ├─ 011.json
+   │  ├─ 012.json
+   │  ├─ 013.json
+   │  ├─ 014.json
+   │  ├─ 015.json
+   │  ├─ 016.json
+   │  ├─ 017.json
+   │  ├─ 018.json
+   │  └─ 019.json
+   │
+   └─ advance/
+      ├─ 020.json
+      ├─ 021.json
+      ├─ 022.json
+      ├─ 023.json
+      ├─ 024.json
+      ├─ 025.json
+      ├─ 026.json
+      ├─ 027.json
+      ├─ 028.json
+      ├─ 029.json
+      ├─ 030.json
+      ├─ 031.json
+      ├─ 032.json
+      ├─ 033.json
+      ├─ 034.json
+      ├─ 035.json
+      ├─ 036.json
+      └─ 037.json
 ~~~
 
 ---
