@@ -159,13 +159,13 @@ TERMPROJECT/
 
 [Font](https://noonnu.cc/font_page/694)
 
-[배경 음악]  
-[YouTube 링크 1](https://www.youtube.com/watch?v=7OQx3dMjBMQ&list=RDQMVI8r1aHT3yA&index=10)  
-[YouTube 링크 2](https://www.youtube.com/watch?v=6RO7K4W-c9g&list=RDQMVI8r1aHT3yA&index=5)  
-[YouTube 링크 3](https://www.youtube.com/watch?v=XMn4DA7UxFk&list=RDQMudcOVFF92x0&index=7)  
-[YouTube 링크 4](https://www.youtube.com/watch?v=YUE2LoPlBs0&list=PLuqZTQ_5gsprXxxcIR8KeohOY4lM82m-Q&index=13)  
-[YouTube 링크 5](https://www.youtube.com/watch?v=EVHet8oqWBo&list=PLuqZTQ_5gsprXxxcIR8KeohOY4lM82m-Q&index=19)  
-[YouTube 링크 6](https://www.youtube.com/watch?v=sUXboASMRkc&list=PLuqZTQ_5gsprXxxcIR8KeohOY4lM82m-Q&index=42)
+[배경 음악]:
+(https://www.youtube.com/watch?v=7OQx3dMjBMQ&list=RDQMVI8r1aHT3yA&index=10)  
+(https://www.youtube.com/watch?v=6RO7K4W-c9g&list=RDQMVI8r1aHT3yA&index=5)  
+(https://www.youtube.com/watch?v=XMn4DA7UxFk&list=RDQMudcOVFF92x0&index=7)  
+(https://www.youtube.com/watch?v=YUE2LoPlBs0&list=PLuqZTQ_5gsprXxxcIR8KeohOY4lM82m-Q&index=13)  
+(https://www.youtube.com/watch?v=EVHet8oqWBo&list=PLuqZTQ_5gsprXxxcIR8KeohOY4lM82m-Q&index=19)  
+(https://www.youtube.com/watch?v=sUXboASMRkc&list=PLuqZTQ_5gsprXxxcIR8KeohOY4lM82m-Q&index=42)
 
 
 [Click SFX](https://mixkit.co/free-sound-effects/)
